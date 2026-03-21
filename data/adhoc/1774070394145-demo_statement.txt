@@ -1,0 +1,14 @@
+HNB Credit Card Statement
+Statement Date: 2024-03-01
+Merchant: Keells Super
+Amount: 12500.00 LKR
+Category: Groceries
+
+Date: 2024-02-28
+Merchant: Uber
+Amount: 1200.00 LKR
+Category: Transport
+
+Interest Charges: 450.00 LKR
+Total Due: 14150.00 LKR
+Due Date: 2024-03-25

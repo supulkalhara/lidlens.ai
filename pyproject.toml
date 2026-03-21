@@ -16,6 +16,7 @@ dependencies = [
     "chromadb",
     "sentence-transformers",
     "watchdog",
+    "fpdf2>=2.8.7",
 ]
 
 [tool.uv]

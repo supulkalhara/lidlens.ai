@@ -14,6 +14,7 @@ import Credentials from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+    trustHost: true,
     providers: [
         // ─── Google OAuth ─────────────────────────────────────────────
         Google({

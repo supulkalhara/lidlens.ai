@@ -12,7 +12,7 @@ import {
   Building2, DollarSign, Percent, FileText, RefreshCw,
   PencilLine, Check, X, Landmark, Calendar, Target, Car,
   Store, Repeat, Clock, AlertTriangle, Zap, Shield, ArrowUpRight,
-  Filter, ArrowDownWideNarrow, ArrowUpWideNarrow, Copy, CopyCheck, Plus, Mail, Sparkles
+  Filter, ArrowDownWideNarrow, ArrowUpWideNarrow, Copy, CopyCheck, Plus, Mail, Sparkles, User, LogOut
 } from 'lucide-react'
 import TransactionModal from '@/components/Dashboard/TransactionModal'
 import TransactionFilters from '@/components/Dashboard/TransactionFilters'
@@ -556,16 +556,21 @@ export default function Home() {
                 Add Transaction
               </button>
 
+              <Link
+                href="/profile"
+                title="Profile & Settings"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all text-[9px] font-medium border border-slate-200 dark:border-slate-700"
+              >
+                <User className="w-3.5 h-3.5" />
+                Profile
+              </Link>
+
               <button
-                onClick={() => signOut({ callbackUrl: '/login' })}
+                onClick={() => signOut()}
                 title="Sign out"
                 className="flex items-center gap-1 px-2 py-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all text-[9px] font-medium border border-slate-200 dark:border-slate-700"
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                  <polyline points="16 17 21 12 16 7" />
-                  <line x1="21" y1="12" x2="9" y2="12" />
-                </svg>
+                <LogOut className="w-3 h-3" />
                 Sign out
               </button>
             </div>

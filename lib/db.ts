@@ -45,6 +45,22 @@ function getDb(): Database.Database {
       updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
       PRIMARY KEY (user_key, category)
     );
+
+    CREATE TABLE IF NOT EXISTS user_profile (
+      user_key    TEXT PRIMARY KEY,
+      full_name   TEXT,
+      birthday    TEXT, -- YYYY-MM-DD
+      updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS user_assets (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_key    TEXT NOT NULL,
+      asset_type  TEXT NOT NULL, -- 'bank', 'card', 'loan'
+      name        TEXT NOT NULL,
+      details     TEXT NOT NULL, -- JSON blob (last4, bank_name, logo, etc.)
+      updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `)
 
     return _db
@@ -103,4 +119,59 @@ export function setBudgetLimit(userKey: string, category: string, limit: number)
 export function deleteBudgetLimit(userKey: string, category: string): void {
     const db = getDb()
     db.prepare('DELETE FROM budget_limits WHERE user_key = ? AND category = ?').run(userKey, category)
+}
+
+// ─── User Profile (Birthday) ──────────────────────────────────────
+
+export function getProfile(userKey: string): { full_name: string | null; birthday: string | null } | null {
+    const db = getDb()
+    return db.prepare('SELECT full_name, birthday FROM user_profile WHERE user_key = ?')
+        .get(userKey) as { full_name: string | null; birthday: string | null } | undefined ?? null
+}
+
+export function setProfile(userKey: string, fullName: string | null, birthday: string | null): void {
+    const db = getDb()
+    db.prepare(`
+    INSERT INTO user_profile (user_key, full_name, birthday, updated_at)
+    VALUES (?, ?, ?, datetime('now'))
+    ON CONFLICT(user_key) DO UPDATE SET
+      full_name = IFNULL(excluded.full_name, full_name),
+      birthday  = IFNULL(excluded.birthday, birthday),
+      updated_at = excluded.updated_at
+  `).run(userKey, fullName, birthday)
+}
+
+// ─── User Assets (Cards, Banks, Loans) ────────────────────────────
+
+export function getUserAssets(userKey: string) {
+    const db = getDb()
+    const rows = db.prepare('SELECT id, asset_type, name, details FROM user_assets WHERE user_key = ? ORDER BY id ASC')
+        .all(userKey) as Array<{ id: number; asset_type: string; name: string; details: string }>
+    return rows.map(r => ({
+        id: r.id,
+        type: r.asset_type,
+        name: r.name,
+        details: JSON.parse(r.details)
+    }))
+}
+
+export function setUserAsset(userKey: string, type: string, name: string, details: any, id?: number): void {
+    const db = getDb()
+    if (id) {
+        db.prepare(`
+      UPDATE user_assets SET 
+        asset_type = ?, name = ?, details = ?, updated_at = datetime('now')
+      WHERE id = ? AND user_key = ?
+    `).run(type, name, JSON.stringify(details), id, userKey)
+    } else {
+        db.prepare(`
+      INSERT INTO user_assets (user_key, asset_type, name, details, updated_at)
+      VALUES (?, ?, ?, ?, datetime('now'))
+    `).run(userKey, type, name, JSON.stringify(details))
+    }
+}
+
+export function deleteUserAsset(userKey: string, id: number): void {
+    const db = getDb()
+    db.prepare('DELETE FROM user_assets WHERE id = ? AND user_key = ?').run(id, userKey)
 }

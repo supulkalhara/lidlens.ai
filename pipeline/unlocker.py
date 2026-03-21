@@ -15,6 +15,7 @@ import os
 import sys
 import json
 import pikepdf
+import sqlite3
 from pathlib import Path
 from datetime import datetime
 from config_loader import get_config, get_project_root
@@ -24,58 +25,115 @@ MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
 
 
 def load_cards():
-    """Load card metadata from data/cards.json."""
+    """Load card metadata from data/cards.json AND the SQLite database."""
+    cards = []
+    
+    # 1. From cards.json (legacy/manual)
     cards_path = get_project_root() / "data" / "cards.json"
-    if not cards_path.exists():
-        print("⚠️  No data/cards.json found. Copy data/cards.json.example and fill in your card details.")
-        return []
-    with open(cards_path, "r") as f:
-        return json.load(f)
+    if cards_path.exists():
+        try:
+            with open(cards_path, "r") as f:
+                cards.extend(json.load(f))
+        except Exception as e:
+            print(f"⚠️  Error loading cards.json: {e}")
+
+    # 2. From SQLite preferences.db
+    db_path = get_project_root() / "data" / "preferences.db"
+    if db_path.exists():
+        try:
+            conn = sqlite3.connect(str(db_path))
+            cursor = conn.cursor()
+            
+            # Get Birthday from user_profile
+            cursor.execute("SELECT birthday FROM user_profile LIMIT 1")
+            profile_row = cursor.fetchone()
+            birthday = profile_row[0] if profile_row else None
+            
+            # Get Cards from user_assets
+            cursor.execute("SELECT name, details FROM user_assets WHERE asset_type = 'card'")
+            for row in cursor.fetchall():
+                name, details_json = row
+                details = json.loads(details_json)
+                cards.append({
+                    "cardName": name,
+                    "cardNumber": details.get("digits", ""), # Support 8 digits
+                    "passwordComponents": details.get("passwordComponents", []),
+                    "dob": birthday, # Inject birthday from profile
+                    "source": "db"
+                })
+            conn.close()
+        except Exception as e:
+            print(f"⚠️  Error loading cards from DB: {e}")
+
+    return cards
 
 
 def generate_password(card: dict) -> list[str]:
-    """Generate possible passwords for a card based on its passwordMethod."""
-    method = card.get("passwordMethod", "")
+    """Generate possible passwords for a card based on its password components and birthday."""
+    dob_str = card.get("dob", "")
+    cn = card.get("cardNumber", "")
+    digits = "".join(c for c in cn if c.isdigit())
+    components = card.get("passwordComponents", [])
+    
     passwords = []
 
-    # Collect all card numbers from history
-    card_numbers = []
-    for entry in card.get("history", []):
-        cn = entry.get("cardNumber", "")
-        card_numbers.append("".join(c for c in cn if c.isdigit()))
-    # Also the top-level cardNumber
-    top_cn = card.get("cardNumber", "")
-    top_digits = "".join(c for c in top_cn if c.isdigit())
-    if top_digits and top_digits not in card_numbers:
-        card_numbers.append(top_digits)
+    # Handle explicit password if provided in legacy cards.json
+    if card.get("password"):
+        passwords.append(card["password"])
 
-    dob_str = card.get("dob", "")
-    dob_formatted = ""
+    # 1. New Component-wise logic (Primary)
+    if components:
+        try:
+            combo = []
+            dob = datetime.strptime(dob_str, "%Y-%m-%d") if dob_str and dob_str != "YYYY-MM-DD" else None
+            
+            for comp in components:
+                if comp == 'day_dd' and dob:
+                    combo.append(f"{dob.day:02d}")
+                elif comp == 'month_mm' and dob:
+                    combo.append(f"{dob.month:02d}")
+                elif comp == 'year_yyyy' and dob:
+                    combo.append(str(dob.year))
+                elif comp == 'year_yy' and dob:
+                    combo.append(str(dob.year)[-2:])
+                elif comp == 'card_last_4' and digits:
+                    combo.append(digits[-4:])
+                elif comp == 'card_last_6' and digits:
+                    combo.append(digits[-6:])
+                elif comp == 'card_last_8' and digits:
+                    combo.append(digits[-8:])
+                else:
+                    # If any required component is missing (e.g. no birthday but day_dd requested),
+                    # we can't build this specific password.
+                    pass
+            
+            if combo:
+                passwords.append("".join(combo))
+        except Exception as e:
+            print(f"⚠️  Error building custom password: {e}")
+
+    # 2. Fallbacks / Legacy patterns (Secondary)
     if dob_str and dob_str != "YYYY-MM-DD":
         try:
             dob = datetime.strptime(dob_str, "%Y-%m-%d")
-            day = f"{dob.day:02d}"
-            mon = MONTHS[dob.month - 1]
-            year = str(dob.year)
-            dob_formatted = f"{day}{mon}{year}"
+            dd = f"{dob.day:02d}"
+            mm = f"{dob.month:02d}"
+            yyyy = str(dob.year)
+            
+            # Always try pure birthday patterns as a safety net
+            passwords.append(f"{dd}{mm}{yyyy}")
+            passwords.append(f"{dd}{mm}")
+
         except ValueError:
             pass
 
-    for digits in card_numbers:
-        if not digits:
-            continue
-        if method == "last_8_digits":
-            passwords.append(digits[-8:])
-        elif method == "last_6_digits":
-            passwords.append(digits[-6:])
-        elif method == "last_4_dob" and dob_formatted:
-            dd = f"{datetime.strptime(dob_str, '%Y-%m-%d').day:02d}"
-            mm = f"{datetime.strptime(dob_str, '%Y-%m-%d').month:02d}"
-            passwords.append(f"{digits[-4:]}{dd}{mm}")
-        elif method == "dob_last_6" and dob_formatted:
-            passwords.append(f"{dob_formatted}{digits[-6:]}")
+    # 3. Card-number only fallbacks
+    if digits:
+        passwords.append(digits[-4:])
+        if len(digits) >= 6: passwords.append(digits[-6:])
+        if len(digits) >= 8: passwords.append(digits[-8:])
 
-    return passwords
+    return list(dict.fromkeys(passwords)) # Deduplicate
 
 
 def unlock_pdf(input_pdf: str, output_dir: str, passwords: list[str]) -> bool:
