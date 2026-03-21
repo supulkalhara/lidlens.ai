@@ -1,0 +1,54 @@
+# Ingress — exposes the LidLens dashboard externally
+# Prerequisites:
+#   kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml
+#
+# For TLS: install cert-manager and configure a ClusterIssuer (see README)
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: lidlens-ingress
+  namespace: lidlens
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # Rate limiting — protect the login endpoint
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+    nginx.ingress.kubernetes.io/limit-connections: "5"
+    # Buffer tuning for large dashboards
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    # cert-manager TLS (uncomment and set your email in the issuer)
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  labels:
+    app.kubernetes.io/part-of: lidlens
+spec:
+  ingressClassName: nginx
+  # TLS — uncomment after setting up cert-manager
+  # tls:
+  #   - hosts:
+  #       - lidlens.yourdomain.com
+  #     secretName: lidlens-tls
+  rules:
+    - host: lidlens.yourdomain.com   # ← Change to your domain / cluster IP
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: lidlens
+                port:
+                  number: 3000
+    # Prefect UI — internal access only (remove if not needed externally)
+    - host: prefect.lidlens.yourdomain.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: prefect-server
+                port:
+                  number: 4200

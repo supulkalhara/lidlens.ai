@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lidlens
+  labels:
+    app.kubernetes.io/name: lidlens
+    app.kubernetes.io/part-of: lidlens

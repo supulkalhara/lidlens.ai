@@ -1,0 +1,56 @@
+# LidLens Configuration
+# Secrets are injected from .env via ${VAR} syntax
+# All non-secret configuration lives here
+
+project:
+  name: lidlens
+  version: 1.0.0
+
+dashboard:
+  port: 3000
+  statements_dir: ./data/card_statements_structured
+
+pipeline:
+  watch_dir: ./data/card_statements_locked    # Observer watches this directory
+  unlocked_dir: ./data/card_statements_unlocked
+  structured_dir: ./data/card_statements_structured
+  csv_dir: ./data/card_statements_csv
+  auto_trigger: true                          # Enable observer pattern
+
+llm:
+  ollama:
+    host: http://localhost:11434
+    model: qwen2:7b
+    temperature: 0        # Deterministic output
+    timeout: 600
+    max_retries: 2
+    num_ctx: 8192
+  groq:
+    api_key: ${GROQ_API_KEY}
+    model: openai/gpt-oss-120b
+    temperature: 0        # Deterministic output
+    max_tokens: 8192
+
+pii_guard:
+  enabled: true
+  entities:
+    - CREDIT_CARD
+    - PERSON
+    - EMAIL_ADDRESS
+    - PHONE_NUMBER
+    - IBAN_CODE
+    - IP_ADDRESS
+
+rag:
+  enabled: true
+  db_path: ./data/chromadb
+  embedding_model: all-MiniLM-L6-v2
+  collection_name: lidlens_transactions
+
+gmail:  # Future: email auto-fetch
+  user: ${GMAIL_USER:your_email@gmail.com}
+  client_id: ${GMAIL_CLIENT_ID}
+  client_secret: ${GMAIL_CLIENT_SECRET}
+  refresh_token: ${GMAIL_REFRESH_TOKEN}
+  redirect_uri: http://localhost:3000/gmail/callback
+  poll_interval_ms: 120000

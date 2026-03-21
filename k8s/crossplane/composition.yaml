@@ -1,0 +1,86 @@
+# Crossplane Composite Resource Definition
+# Defines "LidLensEnvironment" as a reusable infrastructure composition.
+# This creates: Namespace + PVC + ConfigMap + Secrets in one claim.
+
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: lidlensenvironments.lidlens.io
+spec:
+  group: lidlens.io
+  names:
+    kind: LidLensEnvironment
+    plural: lidlensenvironments
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                storageSize:
+                  type: string
+                  default: "5Gi"
+                  description: PVC storage size for statement data
+                namespace:
+                  type: string
+                  default: "lidlens"
+                  description: Target Kubernetes namespace
+---
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: lidlens-environment
+  labels:
+    crossplane.io/xrd-ref: lidlensenvironments.lidlens.io
+spec:
+  compositeTypeRef:
+    apiVersion: lidlens.io/v1alpha1
+    kind: LidLensEnvironment
+  resources:
+    # Namespace
+    - name: namespace
+      base:
+        apiVersion: kubernetes.crossplane.io/v1alpha2
+        kind: Object
+        spec:
+          forProvider:
+            manifest:
+              apiVersion: v1
+              kind: Namespace
+              metadata:
+                name: lidlens
+                labels:
+                  app.kubernetes.io/part-of: lidlens
+          providerConfigRef:
+            name: kubernetes-provider
+
+    # PersistentVolumeClaim
+    - name: data-pvc
+      base:
+        apiVersion: kubernetes.crossplane.io/v1alpha2
+        kind: Object
+        spec:
+          forProvider:
+            manifest:
+              apiVersion: v1
+              kind: PersistentVolumeClaim
+              metadata:
+                name: lidlens-data
+                namespace: lidlens
+              spec:
+                accessModes:
+                  - ReadWriteOnce
+                resources:
+                  requests:
+                    storage: 5Gi
+          providerConfigRef:
+            name: kubernetes-provider
+      patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.storageSize
+          toFieldPath: spec.forProvider.manifest.spec.resources.requests.storage

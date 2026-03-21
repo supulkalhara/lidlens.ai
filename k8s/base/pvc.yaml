@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lidlens-data
+  namespace: lidlens
+  labels:
+    app.kubernetes.io/part-of: lidlens
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  # storageClassName will be set by Crossplane or cluster default

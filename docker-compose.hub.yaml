@@ -1,0 +1,36 @@
+# LidLens — Docker Hub (no build required)
+# Pull pre-built images from Docker Hub and run.
+#
+# Usage:
+#   1. cp .env.example .env  — fill in AUTH_SECRET, AUTH_PASSWORD, GROQ_API_KEY
+#   2. docker compose -f docker-compose.hub.yaml up
+
+services:
+  dashboard:
+    image: lidlenslabs/lidlens:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+      - ./config.yaml:/app/config.yaml:ro
+    env_file: .env
+    restart: unless-stopped
+
+  prefect-server:
+    image: prefecthq/prefect:3-latest
+    ports:
+      - "4200:4200"
+    command: prefect server start --host 0.0.0.0
+    restart: unless-stopped
+
+  pipeline:
+    image: lidlenslabs/lidlens-pipeline:latest
+    volumes:
+      - ./data:/app/data
+      - ./config.yaml:/app/config.yaml:ro
+    env_file: .env
+    environment:
+      - PREFECT_API_URL=http://prefect-server:4200/api
+    depends_on:
+      - prefect-server
+    restart: unless-stopped

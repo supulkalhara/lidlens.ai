@@ -1,0 +1,67 @@
+# NetworkPolicy — restricts pod-to-pod traffic in the lidlens namespace
+#
+# After sidecar refactor:
+#   lidlens pod (dashboard + pipeline sidecar) — accepts from ingress-nginx; egress to internet + prefect
+#   prefect — accepts only from lidlens pod
+
+# ─── LidLens Pod (dashboard + pipeline sidecar) ───────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: lidlens-netpol
+  namespace: lidlens
+spec:
+  podSelector:
+    matchLabels:
+      app: lidlens
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Accept HTTP from ingress-nginx
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - port: 3000
+  egress:
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+    # Allow all outbound (Groq API, Ollama, Prefect server, currency API)
+    - {}
+---
+# ─── Prefect Server ───────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prefect-netpol
+  namespace: lidlens
+spec:
+  podSelector:
+    matchLabels:
+      app: prefect-server
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Accept from lidlens pod (sidecar pipeline registers flows here)
+    - from:
+        - podSelector:
+            matchLabels:
+              app: lidlens
+      ports:
+        - port: 4200
+    # Accept from ingress-nginx for Prefect UI external access
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - port: 4200
+  egress:
+    - ports:
+        - port: 53
+          protocol: UDP

@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prefect-server
+  namespace: lidlens
+  labels:
+    app.kubernetes.io/name: prefect-server
+    app.kubernetes.io/part-of: lidlens
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prefect-server
+  template:
+    metadata:
+      labels:
+        app: prefect-server
+    spec:
+      containers:
+        - name: prefect
+          image: prefecthq/prefect:3-latest
+          command: ["prefect", "server", "start", "--host", "0.0.0.0"]
+          ports:
+            - containerPort: 4200
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 4200
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 4200
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prefect-server
+  namespace: lidlens
+spec:
+  selector:
+    app: prefect-server
+  ports:
+    - port: 4200
+      targetPort: 4200
+  type: ClusterIP

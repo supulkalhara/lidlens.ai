@@ -1,0 +1,27 @@
+[project]
+name = "lidlens"
+version = "0.1.0"
+description = "Privacy-first personal finance system with AI-powered extraction"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "prefect>=3.0",
+    "pikepdf",
+    "PyPDF2",
+    "python-dotenv",
+    "pyyaml",
+    "requests",
+    "groq",
+    "llm-guard",
+    "chromadb",
+    "sentence-transformers",
+    "watchdog",
+]
+
+[tool.uv]
+managed = true
+package = false
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

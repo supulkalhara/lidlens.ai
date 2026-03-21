@@ -1,0 +1,11 @@
+# Crossplane Resource Claim
+# Creates a LidLens environment — provisions all required infrastructure.
+# kubectl apply -f k8s/crossplane/claim.yaml
+
+apiVersion: lidlens.io/v1alpha1
+kind: LidLensEnvironment
+metadata:
+  name: lidlens-prod
+spec:
+  storageSize: "10Gi"
+  namespace: "lidlens"

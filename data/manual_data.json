@@ -1,0 +1,143 @@
+{
+    "accounts": [
+        {
+            "id": "acc_bank_a_savings",
+            "bank": "Bank A",
+            "accountNumber": "****1234",
+            "currentBalance": 100000,
+            "accountType": "savings",
+            "currency": "LKR"
+        },
+        {
+            "id": "acc_bank_a_money_market",
+            "bank": "Bank A",
+            "accountNumber": "****5678",
+            "currentBalance": 500000,
+            "accountType": "money_market",
+            "currency": "LKR"
+        },
+        {
+            "id": "acc_bank_b_savings",
+            "bank": "Bank B",
+            "accountNumber": "****9012",
+            "currentBalance": 0,
+            "accountType": "savings",
+            "currency": "LKR"
+        },
+        {
+            "id": "acc_bank_c_savings",
+            "bank": "Bank C",
+            "accountNumber": "****3456",
+            "currentBalance": 0,
+            "accountType": "savings",
+            "currency": "LKR"
+        },
+        {
+            "id": "acc_crypto",
+            "bank": "Crypto Exchange",
+            "accountNumber": "Crypto Wallet",
+            "currentBalance": 100,
+            "accountType": "crypto",
+            "currency": "USD"
+        }
+    ],
+    "loans": [
+        {
+            "id": "loan_personal",
+            "bank": "Bank C",
+            "type": "Personal Loan",
+            "principal": 1000000,
+            "outstandingBalance": 800000,
+            "interestRate": 12,
+            "monthlyPayment": 25000,
+            "totalInstallments": 48,
+            "paidInstallments": 8,
+            "startDate": "2025-06-01"
+        },
+        {
+            "id": "loan_vehicle",
+            "bank": "Bank D",
+            "type": "Vehicle Loan",
+            "principal": 3000000,
+            "outstandingBalance": 3000000,
+            "interestRate": 10,
+            "monthlyPayment": 65000,
+            "totalInstallments": 60,
+            "paidInstallments": 0,
+            "startDate": "2026-01-01"
+        }
+    ],
+    "income": [
+        {
+            "id": "income_salary",
+            "source": "Salary",
+            "amount": 200000,
+            "currency": "LKR",
+            "day": 25,
+            "frequency": "monthly"
+        }
+    ],
+    "subscriptions": [
+        {
+            "name": "Netflix",
+            "category": "subscription",
+            "amount": 2500,
+            "currency": "LKR",
+            "billingDate": 15
+        },
+        {
+            "name": "Spotify",
+            "category": "subscription",
+            "amount": 550,
+            "currency": "LKR",
+            "billingDate": 20
+        },
+        {
+            "name": "Cloud Storage",
+            "category": "subscription",
+            "amount": 600,
+            "currency": "LKR",
+            "billingDate": 1
+        },
+        {
+            "name": "Apartment Maintenance",
+            "category": "subscription",
+            "amount": 15000,
+            "currency": "LKR",
+            "billingDate": 1
+        },
+        {
+            "name": "Utilities (Electric+Water)",
+            "category": "subscription",
+            "amount": 10000,
+            "currency": "LKR",
+            "billingDate": 5
+        }
+    ],
+    "installments": [
+        {
+            "id": "inst_laptop",
+            "description": "Laptop Purchase",
+            "totalAmount": 450000,
+            "installmentAmount": 37500,
+            "totalInstallments": 12,
+            "paidInstallments": 4,
+            "startDate": "2025-11-15",
+            "creditCard": {
+                "bank": "Bank A",
+                "maskedNumber": "1234"
+            }
+        }
+    ],
+    "transactions": [],
+    "categoryLimits": {
+        "food": 50000,
+        "transport": 30000,
+        "shopping": 40000,
+        "entertainment": 20000,
+        "utilities": 15000,
+        "subscription": 10000,
+        "transfer": null,
+        "uncategorized": null
+    }
+}

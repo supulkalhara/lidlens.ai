@@ -1,0 +1,15 @@
+# ConfigMap — generated from config.yaml
+# Usage: kubectl create configmap lidlens-config --from-file=config.yaml=config.yaml -n lidlens
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lidlens-config
+  namespace: lidlens
+  labels:
+    app.kubernetes.io/part-of: lidlens
+data:
+  config.yaml: |
+    # This will be replaced by the actual config.yaml content
+    # Use: kubectl create configmap lidlens-config --from-file=config.yaml=config.yaml -n lidlens
+    project:
+      name: lidlens

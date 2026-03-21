@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: lidlens
+
+resources:
+  - base/namespace.yaml
+  - base/configmap.yaml
+  - base/secret.yaml
+  - base/pvc.yaml
+  - base/dashboard-deployment.yaml
+  - base/prefect-server.yaml
+  - base/ingress.yaml
+  - base/network-policy.yaml
+
+commonLabels:
+  app.kubernetes.io/managed-by: kustomize
+  app.kubernetes.io/part-of: lidlens

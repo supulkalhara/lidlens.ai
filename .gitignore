@@ -1,0 +1,78 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+.next.bak/
+.next.broken-*/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files
+.env*.local
+.env
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# prisma (legacy)
+/prisma/*.db
+/prisma/*.db-journal
+
+# uploaded files
+/public/statements/*.pdf
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ─── Python / Pipeline ───
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+
+# ─── Data directories (user statement data) ───
+data/card_statements_locked/
+data/card_statements_unlocked/
+data/card_statements_structured/
+data/card_statements_csv/
+data/chromadb/
+!data/.gitkeep
+data/cards.json
+!data/manual_data.json
+!data/cards.json.example
+
+# ─── Pipeline runtime ───
+.prefect/
+unlock_failed.log
+
+# ─── Docker ───
+docker-compose.override.yaml

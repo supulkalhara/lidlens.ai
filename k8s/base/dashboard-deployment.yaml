@@ -1,0 +1,142 @@
+# LidLens — Sidecar Deployment
+#
+# The pipeline runs as a SIDECAR container inside the same pod as the dashboard.
+# Benefits:
+#   • Shared PVC: pipeline writes extracted JSON → dashboard reads it directly
+#   • Shared network namespace: services communicate via localhost
+#   • Single replica manages both services as a unit
+#   • Simpler K8s RBAC / NetworkPolicy (one identity)
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lidlens
+  namespace: lidlens
+  labels:
+    app.kubernetes.io/name: lidlens
+    app.kubernetes.io/part-of: lidlens
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lidlens
+  template:
+    metadata:
+      labels:
+        app: lidlens
+    spec:
+      # ── Init container: verify data directories exist ──────────────
+      initContainers:
+        - name: init-dirs
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              mkdir -p \
+                /data/card_statements_locked \
+                /data/card_statements_unlocked \
+                /data/card_statements_structured \
+                /data/card_statements_csv \
+                /data/chromadb
+          volumeMounts:
+            - name: data
+              mountPath: /data
+
+      containers:
+        # ── Container 1: Dashboard (Next.js) ──────────────────────────
+        - name: dashboard
+          image: lidlenslabs/lidlens:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - secretRef:
+                name: lidlens-secrets
+          env:
+            - name: NODE_ENV
+              value: production
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+          livenessProbe:
+            httpGet:
+              path: /api/auth/session
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/auth/session
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+        # ── Container 2: Pipeline Sidecar (Python watcher) ────────────
+        - name: pipeline
+          image: lidlenslabs/lidlens-pipeline:latest
+          imagePullPolicy: Always
+          # No ports — pipeline communicates via shared filesystem only
+          envFrom:
+            - secretRef:
+                name: lidlens-secrets
+          env:
+            - name: PREFECT_API_URL
+              value: http://prefect-server:4200/api
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+          # Pipeline is best-effort: don't let it crash the whole pod
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "import sys; sys.exit(0)"]
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            failureThreshold: 5
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
+
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: lidlens-data
+        - name: config
+          configMap:
+            name: lidlens-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lidlens
+  namespace: lidlens
+  labels:
+    app.kubernetes.io/part-of: lidlens
+spec:
+  selector:
+    app: lidlens
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+  type: ClusterIP

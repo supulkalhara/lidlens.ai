@@ -1,0 +1,56 @@
+# LidLens — Docker Compose
+#
+# Modes:
+#   1. docker compose up                      (builds from source)
+#   2. docker compose -f docker-compose.hub.yaml up  (pull from Docker Hub, no build needed)
+#
+# The pipeline runs as a SIDECAR-equivalent companion service,
+# sharing the same data/ volume as the dashboard.
+# (In K8s, they run as actual sidecars in the same pod.)
+
+services:
+
+  # ─── Dashboard + Pipeline (all-in-one for local dev) ──────────
+  # Builds the all-in-one image: runs both Next.js and Python watcher
+  # via supervisord in a single container — mirrors the laptop UX.
+  app:
+    build:
+      context: .
+      target: all-in-one
+    image: lidlenslabs/lidlens:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data # Statement data persists on host
+      - ./config.yaml:/app/config.yaml:ro
+    env_file: .env
+    environment:
+      - PREFECT_API_URL=http://prefect:4200/api
+    depends_on:
+      prefect:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:3000/api/auth/session" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ─── Prefect Server (pipeline UI & flow runner) ────────────────
+  prefect:
+    image: prefecthq/prefect:3-latest
+    ports:
+      - "4200:4200"
+    command: prefect server start --host 0.0.0.0
+    volumes:
+      - prefect-db:/root/.prefect # Persists flow run history
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "sh", "-c", "wget -q --spider http://localhost:4200/api/health || exit 1" ]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  prefect-db: # Named volume for Prefect's SQLite database — survives container restarts
