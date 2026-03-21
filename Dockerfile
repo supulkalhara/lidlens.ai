@@ -6,8 +6,8 @@
 #   all-in-one    — Both pipeline + dashboard in one container (laptop / Docker Compose)
 #
 # Docker Hub:
-#   docker pull lidlenslabs/lidlens:latest          (all-in-one for laptops)
-#   docker pull lidlenslabs/lidlens-pipeline:latest  (K8s sidecar)
+#   docker pull 190482/lidlenslabs:latest          (all-in-one for laptops)
+#   docker pull 190482/lidlenslabs-pipeline:latest  (K8s sidecar)
 
 # ═══════════════════════════════════════════════════════════════
 # Stage 1: Python pipeline (with uv)

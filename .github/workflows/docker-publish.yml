@@ -40,7 +40,7 @@ jobs:
           target: all-in-one
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
-            lidlenslabs/lidlens:latest-dev
+            190482/lidlenslabs:latest-dev
             ghcr.io/${{ github.repository }}:latest-dev
           cache-from: type=gha
           cache-to: type=gha,mode=max

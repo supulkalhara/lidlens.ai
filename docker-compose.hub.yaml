@@ -7,7 +7,7 @@
 
 services:
   dashboard:
-    image: lidlenslabs/lidlens:latest
+    image: 190482/lidlenslabs:latest
     ports:
       - "3000:3000"
     volumes:
@@ -24,7 +24,7 @@ services:
     restart: unless-stopped
 
   pipeline:
-    image: lidlenslabs/lidlens-pipeline:latest
+    image: 190482/lidlenslabs-pipeline:latest
     volumes:
       - ./data:/app/data
       - ./config.yaml:/app/config.yaml:ro
