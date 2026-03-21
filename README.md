@@ -352,7 +352,7 @@ The pipeline runs as a **sidecar** inside the same pod as the dashboard. They sh
 
 ```
 ┌─────────────────────────────────────────────┐
-│               lidlens Pod                    │
+│               lidlens Pod                   │
 │                                             │
 │  ┌──────────────┐    ┌──────────────────┐   │
 │  │  dashboard   │    │    pipeline      │   │
