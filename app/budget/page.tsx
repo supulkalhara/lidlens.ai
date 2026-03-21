@@ -13,6 +13,7 @@ import {
     CheckCircle,
     DollarSign,
     BarChart3,
+    Sparkles,
 } from 'lucide-react'
 import { getCategoryChartColor } from '@/lib/category-colors'
 
@@ -109,13 +110,17 @@ export default function BudgetPage() {
                         <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-2" />
 
                         {/* Navigation Tabs */}
-                        <div className="flex bg-slate-100 dark:bg-slate-700/50 p-0.5 rounded-lg">
+                        <div className="flex bg-slate-100 dark:bg-slate-700/50 p-0.5 rounded-lg gap-0.5">
                             <Link href="/" className="px-3 py-1 text-[10px] font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-all">
                                 Dashboard
                             </Link>
                             <button className="px-3 py-1 bg-white dark:bg-slate-800 shadow-sm rounded-md text-[10px] font-medium text-slate-900 dark:text-slate-100 transition-all">
                                 Budget
                             </button>
+                            <Link href="/extract" className="px-3 py-1 text-[10px] font-medium text-indigo-500 hover:text-indigo-600 dark:text-indigo-400 dark:hover:text-indigo-300 transition-all flex items-center gap-1">
+                                <Sparkles className="w-3 h-3" />
+                                BYOD
+                            </Link>
                         </div>
                     </div>
                 </div>

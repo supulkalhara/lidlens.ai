@@ -82,6 +82,7 @@ Your PDF → watch_dir → Prefect Pipeline → JSON → Dashboard
 | Feature | Details |
 |---------|---------|
 | 🔐 **Login** | Google OAuth OR password access key (NextAuth, JWT sessions) |
+| ⏱️ **Real-time BYOD** | Upload any PDF receipt/invoice & get an instant AI Dashboard (`/extract`) |
 | 🏦 **Accounts** | Savings, money market, crypto — sortable with balance history |
 | 💳 **Credit Cards** | Usage progress bars, limits, closing balance per statement |
 | 📊 **Spending by Category** | Donut chart — click a slice to drill into merchants |
