@@ -38,6 +38,20 @@ LidLens.ai is an end-to-end system that unlocks password-protected credit card P
 
 *NextAuth.js-powered login with Google OAuth ("Continue with Google") or password access key. Dark glass-morphism design. Sessions expire after 7 days.*
 
+### Account Profile & Password Builder
+
+![Account Profile](docs/images/profile_setup.png)
+
+*The new **LidLens.ai Profile** system. Manage your financial identity and construct complex PDF password rules (e.g., DDMMYYYY + Last 4) using a visual component-based builder.*
+
+---
+
+### 🎬 Live Demo — Custom Password & Pipeline
+
+[View Full Demo (WebP)](docs/images/lidlens_full_demo.webp)
+
+*This recording showcases: Building a custom rule, viewing the Prefect pipeline flow, and unlocking a protected statement in real-time.*
+
 ---
 
 ## 🏗️ Architecture
@@ -82,9 +96,12 @@ Your PDF → watch_dir → Prefect Pipeline → JSON → Dashboard
 | Feature | Details |
 |---------|---------|
 | 🔐 **Login** | Google OAuth OR password access key (NextAuth, JWT sessions) |
+| 👤 **Account Profile** | Manage your full name and birthday for automated security (`/profile`) |
+| 🧩 **Password Builder** | Construct custom PDF unlocking rules using Day, Month, Year, and Card Digits |
+| 💳 **Managed Assets** | Centralized UI for Banks, Cards, and Loans — no more manual JSON editing |
 | ⏱️ **Real-time BYOD** | Upload any PDF receipt/invoice & get an instant AI Dashboard (`/extract`) |
 | 🏦 **Accounts** | Savings, money market, crypto — sortable with balance history |
-| 💳 **Credit Cards** | Usage progress bars, limits, closing balance per statement |
+| 📉 **Credit Cards** | Usage progress bars, limits, closing balance per statement |
 | 📊 **Spending by Category** | Donut chart — click a slice to drill into merchants |
 | 📅 **Monthly Trend** | 12-month line chart with transaction count axis |
 | 🌡️ **Daily Heatmap** | Stacked area chart by day, coloured by category |
@@ -92,9 +109,9 @@ Your PDF → watch_dir → Prefect Pipeline → JSON → Dashboard
 | 💰 **Installments** | Remaining amount, months left, free-on date per card |
 | 🔄 **Subscriptions** | Recurring charges with monthly total |
 | 📋 **Budget Analysis** | Per-category limits with red overspend alerts (`/budget`) |
-| 🗓️ **Upcoming Payments** | Predicted due dates for all recurring items |
+| 🗺️ **Pipeline Monitoring** | Direct button to track Prefect flow statuses in real-time |
 | 💱 **Multi-currency** | Live USD/LKR rate, USDT crypto accounts |
-| 🛡️ **Financial Health Score** | Composite score based on credit utilisation & net worth |
+| 🛡️ **Financial Score** | Composite score based on credit utilisation & net worth |
 | ⚙️ **User Preferences** | Budget limits, UI settings saved per-user in SQLite |
 
 ---
