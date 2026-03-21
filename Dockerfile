@@ -40,7 +40,7 @@ CMD ["python", "pipeline/watcher.py"]
 # ═══════════════════════════════════════════════════════════════
 # Stage 2: Dashboard build (Node.js)
 # ═══════════════════════════════════════════════════════════════
-FROM node:18-alpine AS dashboard-build
+FROM node:20-alpine AS dashboard-build
 
 WORKDIR /app
 
@@ -54,7 +54,7 @@ RUN npm run build
 # ═══════════════════════════════════════════════════════════════
 # Stage 3: Dashboard-only runtime (K8s main container)
 # ═══════════════════════════════════════════════════════════════
-FROM node:18-alpine AS dashboard
+FROM node:20-alpine AS dashboard
 
 WORKDIR /app
 
@@ -77,14 +77,13 @@ CMD ["npm", "start"]
 
 # ═══════════════════════════════════════════════════════════════
 # Stage 4: All-in-one (laptop / single-container Docker Compose)
-# Runs dashboard + pipeline watcher via supervisord
 # ═══════════════════════════════════════════════════════════════
 FROM python:3.11-slim AS all-in-one
 
-# Install Node.js 18 into the Python base image
+# Install Node.js 20 and build tools
 RUN apt-get update && apt-get install -y \
-    curl supervisor \
-    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    curl supervisor build-essential \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
