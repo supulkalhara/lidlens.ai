@@ -29,6 +29,13 @@ try:
     _watchdog_available = True
 except ImportError:
     _watchdog_available = False
+    # Fallback to prevent NameError during class definition
+    class FileSystemEventHandler: pass
+    class Observer: 
+        def schedule(self, *args, **kwargs): pass
+        def start(self): pass
+        def stop(self): pass
+        def join(self): pass
 
 
 def _get_processed_marker(pdf_path: str, structured_dir: str) -> str:

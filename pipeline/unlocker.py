@@ -14,6 +14,7 @@ Supported password methods:
 import os
 import sys
 import json
+import re
 import pikepdf
 import sqlite3
 from pathlib import Path
@@ -22,6 +23,17 @@ from config_loader import get_config, get_project_root
 
 MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
           'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+# Patterns to skip non-statement files (Instructions, T&C, etc.)
+SKIP_PATTERNS = [
+    r"instruction",
+    r"payment[ _]methods",
+    r"hsbc[ _]t&c",
+    r"terms[ _]and[ _]conditions",
+    r"privacy[ _]policy",
+    r"marketing",
+    r"guide"
+]
 
 
 def load_cards():
@@ -139,6 +151,14 @@ def generate_password(card: dict) -> list[str]:
 def unlock_pdf(input_pdf: str, output_dir: str, passwords: list[str]) -> bool:
     """Try to unlock a PDF with the given list of passwords."""
     basename = os.path.splitext(os.path.basename(input_pdf))[0]
+    
+    # Check if file should be skipped based on naming
+    lower_name = basename.lower()
+    for pattern in SKIP_PATTERNS:
+        if re.search(pattern, lower_name):
+            print(f"  ⏭️  Filtered (junk file): {os.path.basename(input_pdf)}")
+            return False
+
     output_pdf = os.path.join(output_dir, f"{basename}_unlocked.pdf")
 
     if os.path.exists(output_pdf):

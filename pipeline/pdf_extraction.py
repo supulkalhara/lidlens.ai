@@ -64,7 +64,9 @@ def extract_pages(pdf_path: str) -> list[str]:
         for page in reader.pages:
             text = page.extract_text()
             if text:
-                pages.append(text)
+                # Basic normalization to save tokens
+                clean_text = "\n".join([line.strip() for line in text.split("\n") if line.strip()])
+                pages.append(clean_text)
     return pages
 
 
@@ -188,46 +190,33 @@ TEXT:
 """
 
 
-def create_groq_refinement_prompt(raw_text: str, statement_year: int) -> str:
-    return f"""You are a personal finance assistant. Below is raw output from an LLM that extracted credit card transactions from a PDF. It may be malformed, truncated, or contain markdown.
-
-Extract ALL transactions you can find. Normalize and categorize them. Use statement year {statement_year} (or {statement_year + 1} for Jan/Feb).
+def create_groq_direct_prompt(raw_text: str, statement_year: int) -> str:
+    return f"""You are a personal finance assistant. Below is raw text extracted from a credit card statement PDF.
+Extract ALL transactions. Normalize and categorize them. Use statement year {statement_year} (or {statement_year + 1} for Jan/Feb).
 
 RULES:
-1. Keep EVERY transaction as a separate row. Do NOT combine or merge.
-2. DELETE only: rows where description is only numbers, or contains "Opening Balance", "Closing Balance", "Total Due", "Statement of Account".
-3. KEEP: "Payment 084" and similar payment transactions (they are credits).
+1. Return ONLY a valid JSON array of objects.
+2. Each object represents one transaction.
+3. Keep EVERY transaction as a separate row. Do NOT combine or merge.
+4. Filter out: opening/closing balances, total due, interest charges (unless they are specific fees), headers.
+5. KEEP: Payments made to the card (they are credits).
 
-NORMALIZE:
+NORMALIZATION:
 - transaction_date: Output as "DD Mon YYYY" (e.g. "17 Nov 2025").
 - amount: Positive number only. Remove commas and minus signs.
 - currency: "LKR" or "USD" (default LKR).
 - direction: "debit" for spending, "credit" for payments/refunds.
-- description: Clean merchant name only (no URLs, no amounts).
-- is_installment: true if description has "EPP", "X of Y", "X/Y", "Instalment".
-- installment_paid, installment_total: Extract numbers from "3/48" or "005 of 060".
+- description: Clean merchant name only (no URLs, no card numbers, no locations).
+- is_installment: true if description suggests a plan ("EPP", "Instalment", "X of Y").
+- installment_paid, installment_total: Extract numbers if found (e.g. 3 from "3 of 12").
 
-CATEGORY (one word, for personal finance management):
-Assign exactly ONE category per transaction (lowercase, use underscore for multi-word):
-- Supermarkets → groceries
-- Restaurants, cafes, food delivery → food
-- Petrol, fuel stations → fuel
-- Taxi, ride-hail → transport
-- Streaming, apps → entertainment
-- Online subscriptions → subscriptions
-- Electricity, internet, phone → utilities
-- Retail, installments → shopping
-- Bank fees, stamp duty → fees_taxes
-- Card payments, transfers → transfer
-- Installment plans → loan_installment
-- If unsure → predict based on description
+CATEGORIZATION (assign one word category):
+categories: [groceries, food, fuel, transport, entertainment, subscriptions, utilities, shopping, fees_taxes, transfer, loan_installment, travel, health, miscellaneous]
 
-If the amount is null, remove the json object.
-
-OUTPUT: Return ONLY a valid JSON array. Same keys: transaction_date, description, amount, currency, direction, category, is_installment, installment_paid, installment_total. No markdown, no explanation.
-
-RAW OUTPUT:
+TEXT:
 {raw_text}
+
+OUTPUT: JSON only. No markdown. No paragraphs.
 """
 
 
@@ -285,47 +274,40 @@ def run(input_dir: str = None):
         statement_year = detect_statement_year(pages)
         print(f"    Detected year: {statement_year}")
 
-        # Stage 1: Ollama extracts raw output
-        print("    🔍 Stage 1: Ollama extracting...")
-        raw_chunks = []
+        # Stage 1 & 2: Process page by page to stay under TPM limits
+        print("    🌐 Groq extracting page-by-page...")
+        final_rows = []
+        
         for i, page_text in enumerate(pages, 1):
             print(f"      Page {i}/{len(pages)}...", end=" ", flush=True)
-            raw = ask_llm(create_structured_prompt(page_text, statement_year), pii_guard)
-            if raw:
-                raw_chunks.append(raw)
-            print("done", flush=True)
-            time.sleep(0.5)
+            messages = [
+                {"role": "user", "content": create_groq_direct_prompt(page_text, statement_year)},
+            ]
+            response = ask_groq(messages, pii_guard, temperature=0.1)
+            
+            if not response:
+                print("failed (no response)")
+                continue
 
-        if not raw_chunks:
-            print(f"    ⚠️  No output from Ollama for {file}")
+            # Parse page response
+            response = response.strip()
+            if response.startswith("```"):
+                lines = response.split("\n")
+                response = "\n".join(lines[1:-1]) if len(lines) > 2 else response
+
+            try:
+                page_rows = json.loads(response)
+                if isinstance(page_rows, list):
+                    final_rows.extend(page_rows)
+                    print(f"done ({len(page_rows)} txs)")
+                else:
+                    print("done (0 txs)")
+            except json.JSONDecodeError:
+                print("failed (invalid JSON)")
+
+        if not final_rows:
+            print(f"    ⚠️  No transactions extracted for {file}")
             continue
-
-        raw_combined = "\n\n".join(raw_chunks)
-
-        # Stage 2: Groq refinement → valid JSON
-        print("    🌐 Stage 2: Groq refining...")
-        messages = [
-            {"role": "user", "content": create_groq_refinement_prompt(raw_combined, statement_year)},
-        ]
-        response = ask_groq(messages, pii_guard, temperature=0.2)
-
-        if not response:
-            print(f"    ⚠️  Groq returned no response for {file}")
-            continue
-
-        # Parse response
-        response = response.strip()
-        if response.startswith("```"):
-            lines = response.split("\n")
-            response = "\n".join(lines[1:-1]) if len(lines) > 2 else response
-
-        try:
-            final_rows = json.loads(response)
-            if not isinstance(final_rows, list):
-                final_rows = []
-        except json.JSONDecodeError:
-            print(f"    ⚠️  Invalid JSON response for {file}")
-            final_rows = []
 
         print(f"    ✓ {len(final_rows)} transactions")
 

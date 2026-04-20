@@ -24,6 +24,11 @@ dependencies = [
 managed = true
 package = false
 
+[tool.uv.workspace]
+members = [
+    "components/MailAttachmentExtractor",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

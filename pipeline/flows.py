@@ -17,7 +17,7 @@ from config_loader import get_config
 
 
 @task(name="unlock-pdfs", retries=1, retry_delay_seconds=5)
-def unlock_pdfs(input_path: str = None) -> list[str]:
+def unlock_pdfs(input_path: str | None = None) -> list[str]:
     """Unlock password-protected PDF statements."""
     logger = get_run_logger()
     logger.info("🔓 Stage 1: Unlocking PDFs...")
@@ -85,7 +85,7 @@ def index_to_rag():
 
 
 @flow(name="lidlens-pipeline", description="End-to-end financial data extraction pipeline")
-def lidlens_pipeline(input_path: str = None):
+def lidlens_pipeline(input_path: str | None = None):
     """
     Full LidLens pipeline:
     PDF Unlock → LLM Extraction → Validation → CSV → RAG Index
