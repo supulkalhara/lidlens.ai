@@ -17,12 +17,14 @@ interface Transaction {
     bank: string
     maskedNumber: string
   } | null
+  sourceFile?: string
 }
 
 interface TransactionModalProps {
   transaction: Transaction | null
   onClose: () => void
   onViewSimilar?: (transaction: Transaction) => void
+  onViewPdf?: (sourceFile: string) => void
 }
 
 export default function TransactionModal({ transaction, onClose, onViewSimilar }: TransactionModalProps) {
@@ -32,7 +34,7 @@ export default function TransactionModal({ transaction, onClose, onViewSimilar }
   const isDebit = transaction.type === 'debit'
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={onClose}>
       <div 
         className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
@@ -137,6 +139,16 @@ export default function TransactionModal({ transaction, onClose, onViewSimilar }
 
           {/* Actions */}
           <div className="pt-4 border-t border-slate-200 dark:border-slate-700 flex gap-3">
+            {transaction.sourceFile && onViewPdf && (
+              <button
+                onClick={() => {
+                  onViewPdf(transaction.sourceFile!)
+                }}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-900 dark:text-slate-100 rounded-lg transition-colors font-medium border border-slate-300 dark:border-slate-600"
+              >
+                View PDF
+              </button>
+            )}
             {onViewSimilar && (
               <button
                 onClick={() => {

@@ -76,3 +76,16 @@ unlock_failed.log
 
 # ─── Docker ───
 docker-compose.override.yaml
+
+# ─── Credentials ───
+components/MailAttachmentExtractor/credentials.json
+components/MailAttachmentExtractor/token.json
+
+# ─── Databases ───
+*.db
+*.sqlite
+*.sqlite3
+data/master_transactions.csv
+data/preferences.db-shm
+.gitignore
+data/preferences.db-wal

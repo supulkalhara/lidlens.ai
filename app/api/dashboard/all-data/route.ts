@@ -18,7 +18,7 @@ export async function GET() {
       })),
       creditCards: structuredData.cards.map(card => ({
         ...card,
-        statements: [] // Legacy compatibility
+        statements: card.statements || []
       })),
       loans: manualData.loans.map(loan => {
         const today = new Date()

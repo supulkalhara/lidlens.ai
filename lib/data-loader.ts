@@ -19,6 +19,7 @@ export interface Transaction {
     installmentPaid?: number | null
     installmentTotal?: number | null
     cardId: string
+    sourceFile?: string
 }
 
 export interface CardSummary {
@@ -28,6 +29,7 @@ export interface CardSummary {
     limit: number // Derived or defaulted
     usedAmount: number
     availableCredit: number
+    statements?: any[]
 }
 
 export interface Account {
@@ -120,30 +122,54 @@ export async function loadStructuredTransactions(): Promise<{ transactions: Tran
         const jsonFiles = files.filter(f => f.endsWith('.json'))
 
         for (const file of jsonFiles) {
-            // Identity Card from filename
-            // e.g. "commercial_platinum_november_2025_unlocked.json" -> "commercial_platinum"
-            const parts = file.split('_')
-            let cardNameParts: string[] = []
-            for (const part of parts) {
-                if (['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'].includes(part.toLowerCase())) {
-                    break
+            const m = file.match(/^([A-Za-z]+)_(\d{4})-(\d{2})_/)
+            let cardId = 'unknown_card'
+            let cardName = 'Unknown Card'
+            let bank = 'Unknown'
+            let stmtYear = 2026
+            let stmtMonth = 1
+
+            if (m) {
+                bank = m[1]
+                stmtYear = parseInt(m[2], 10)
+                stmtMonth = parseInt(m[3], 10)
+                // Use a generic card ID based on bank for now, or extract from rest of filename
+                cardId = bank.toLowerCase()
+                cardName = toTitleCase(bank) + ' Credit Card'
+            } else {
+                const parts = file.split('_')
+                let cardNameParts: string[] = []
+                for (const part of parts) {
+                    if (['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'].includes(part.toLowerCase())) {
+                        break
+                    }
+                    cardNameParts.push(part)
                 }
-                cardNameParts.push(part)
+                cardId = cardNameParts.join('_')
+                cardName = toTitleCase(cardId)
+                bank = toTitleCase(cardNameParts[0] || 'Unknown')
             }
-            const cardId = cardNameParts.join('_')
-            const cardName = toTitleCase(cardId)
 
             // Update Card Map
             if (!cardMap.has(cardId)) {
                 cardMap.set(cardId, {
                     id: cardId,
                     name: cardName,
-                    bank: toTitleCase(cardNameParts[0]), // Simple heuristic
+                    bank: bank,
                     limit: (cardName.toLowerCase().includes('dfcc') && cardName.toLowerCase().includes('platinum')) ? 100000 : 500000,
                     usedAmount: 0,
-                    availableCredit: 0
+                    availableCredit: 0,
+                    statements: []
                 })
             }
+            
+            const card = cardMap.get(cardId)!
+            card.statements!.push({
+                id: file,
+                pdfPath: file.replace('.json', '.pdf'),
+                statementPeriod: `${stmtYear}-${stmtMonth.toString().padStart(2, '0')}-01 To ${stmtYear}-${stmtMonth.toString().padStart(2, '0')}-28`, // Fake period to match regex
+                closingBalance: 0
+            })
 
             // Read File
             const filePath = join(STRUCTURED_DATA_DIR, file)
@@ -155,9 +181,29 @@ export async function loadStructuredTransactions(): Promise<{ transactions: Tran
                 // Generate a stable-ish ID
                 const txId = `${file}-${idx}`
 
-                // Parse Date
-                // Input format example: "25 Nov 2024"
-                const date = new Date(tx.transaction_date).toISOString()
+                let parsedDate = new Date(tx.transaction_date)
+                if (!isNaN(parsedDate.getTime())) {
+                    // Fix year hallucination from statement parsing
+                    const txMonth = parsedDate.getMonth() + 1 // 1-12
+                    let actualYear = stmtYear
+                    
+                    // If statement is early in the year (Jan, Feb, Mar) but tx is late in the year (Oct, Nov, Dec),
+                    // the transaction almost certainly happened in the previous year.
+                    if (stmtMonth <= 3 && txMonth >= 10) {
+                        actualYear -= 1
+                    } else if (stmtMonth >= 10 && txMonth <= 3) {
+                        // Very rare: statement in Dec, but transaction in Jan of next year (if statement covers up to early Jan)
+                        actualYear += 1
+                    }
+                    
+                    parsedDate.setFullYear(actualYear)
+                    
+                    // Cap to current date to prevent future dates from bugs
+                    if (parsedDate > new Date()) {
+                        parsedDate.setFullYear(actualYear - 1)
+                    }
+                }
+                const date = (isNaN(parsedDate.getTime()) ? new Date(tx.transaction_date) : parsedDate).toISOString()
 
                 transactions.push({
                     id: txId,
@@ -165,21 +211,24 @@ export async function loadStructuredTransactions(): Promise<{ transactions: Tran
                     description: tx.description,
                     amount: typeof tx.amount === 'number' ? tx.amount : parseFloat(String(tx.amount)) || 0,
                     currency: tx.currency,
-                    type: tx.direction,
+                    type: tx.direction?.toLowerCase() === 'credit' ? 'credit' : 'debit',
                     category: tx.category || 'uncategorized',
                     isInstallment: tx.is_installment,
                     installmentPaid: tx.installment_paid,
                     installmentTotal: tx.installment_total,
-                    cardId: cardId
+                    cardId: cardId,
+                    sourceFile: file.replace('.json', '.csv')
                 })
 
                 // Aggregate usage
-                const card = cardMap.get(cardId)
                 if (card) {
-                    if (tx.direction === 'debit') {
-                        card.usedAmount += typeof tx.amount === 'number' ? tx.amount : parseFloat(String(tx.amount)) || 0
-                    } else if (tx.direction === 'credit') {
-                        card.usedAmount -= typeof tx.amount === 'number' ? tx.amount : parseFloat(String(tx.amount)) || 0
+                    const amt = typeof tx.amount === 'number' ? tx.amount : parseFloat(String(tx.amount)) || 0;
+                    if (tx.direction === 'debit' || tx.direction === 'Credit' || tx.direction === 'Debit') {
+                         if (tx.direction.toLowerCase() === 'debit') {
+                             card.usedAmount += amt
+                         } else {
+                             card.usedAmount -= amt
+                         }
                     }
                 }
             })
