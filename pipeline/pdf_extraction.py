@@ -64,9 +64,12 @@ def extract_pages(pdf_path: str) -> list[str]:
         for page in reader.pages:
             text = page.extract_text()
             if text:
-                # Basic normalization to save tokens
-                clean_text = "\n".join([line.strip() for line in text.split("\n") if line.strip()])
-                pages.append(clean_text)
+                # Remove non-ascii and hidden characters that bloat token counts
+                text = "".join(i for i in text if ord(i) < 128)
+                # Normalize whitespace
+                clean_text = " ".join(text.split())
+                if clean_text:
+                    pages.append(clean_text)
     return pages
 
 
@@ -160,8 +163,10 @@ def ask_groq(messages: list, pii_guard=None, temperature: float = None, max_toke
 
         return response_text
     except Exception as e:
-        print(f"  Groq API error: {e}")
-        return None
+        print(f"  Groq API error: {e}. Falling back to local Ollama...")
+        # Fallback to local Ollama for this chunk
+        combined_prompt = "\n\n".join([m["content"] for m in messages])
+        return ask_llm(combined_prompt, pii_guard)
 
 
 # -------------------- PROMPTS --------------------
@@ -274,36 +279,45 @@ def run(input_dir: str = None):
         statement_year = detect_statement_year(pages)
         print(f"    Detected year: {statement_year}")
 
-        # Stage 1 & 2: Process page by page to stay under TPM limits
-        print("    🌐 Groq extracting page-by-page...")
+        # Stage 1 & 2: Process page by page (and chunk if needed) to stay under TPM limits
+        print("    🌐 Groq extracting (Micro-Chunking)...")
         final_rows = []
         
         for i, page_text in enumerate(pages, 1):
-            print(f"      Page {i}/{len(pages)}...", end=" ", flush=True)
-            messages = [
-                {"role": "user", "content": create_groq_direct_prompt(page_text, statement_year)},
-            ]
-            response = ask_groq(messages, pii_guard, temperature=0.1)
+            # Micro-chunking: Split page into very small pieces (4,000 chars each)
+            # This handles extremely token-dense PDFs on the free tier.
+            chunks = [page_text[j:j+4000] for j in range(0, len(page_text), 4000)]
             
-            if not response:
-                print("failed (no response)")
-                continue
-
-            # Parse page response
-            response = response.strip()
-            if response.startswith("```"):
-                lines = response.split("\n")
-                response = "\n".join(lines[1:-1]) if len(lines) > 2 else response
-
-            try:
-                page_rows = json.loads(response)
-                if isinstance(page_rows, list):
-                    final_rows.extend(page_rows)
-                    print(f"done ({len(page_rows)} txs)")
+            for chunk_idx, chunk in enumerate(chunks):
+                if len(chunks) > 1:
+                    print(f"      Page {i}/{len(pages)} (Part {chunk_idx+1}/{len(chunks)})...", end=" ", flush=True)
                 else:
-                    print("done (0 txs)")
-            except json.JSONDecodeError:
-                print("failed (invalid JSON)")
+                    print(f"      Page {i}/{len(pages)}...", end=" ", flush=True)
+                
+                messages = [
+                    {"role": "user", "content": create_groq_direct_prompt(chunk, statement_year)},
+                ]
+                response = ask_groq(messages, pii_guard, temperature=0.1)
+                
+                if not response:
+                    print("failed (no response)")
+                    continue
+
+                # Parse chunk response
+                response = response.strip()
+                if response.startswith("```"):
+                    lines = response.split("\n")
+                    response = "\n".join(lines[1:-1]) if len(lines) > 2 else response
+
+                try:
+                    page_rows = json.loads(response)
+                    if isinstance(page_rows, list):
+                        final_rows.extend(page_rows)
+                        print(f"done ({len(page_rows)} txs)")
+                    else:
+                        print("done (0 txs)")
+                except json.JSONDecodeError:
+                    print("failed (invalid JSON)")
 
         if not final_rows:
             print(f"    ⚠️  No transactions extracted for {file}")
