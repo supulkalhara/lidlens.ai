@@ -12,7 +12,8 @@ import {
   Building2, DollarSign, Percent, FileText, RefreshCw,
   PencilLine, Check, X, Landmark, Calendar, Target, Car,
   Store, Repeat, Clock, AlertTriangle, Zap, Shield, ArrowUpRight,
-  Filter, ArrowDownWideNarrow, ArrowUpWideNarrow, Copy, CopyCheck, Plus, Mail, Sparkles, User, LogOut
+  Filter, ArrowDownWideNarrow, ArrowUpWideNarrow, Copy, CopyCheck, Plus, Mail, Sparkles, User, LogOut,
+  FileSpreadsheet, ExternalLink, ListFilter, Trash2
 } from 'lucide-react'
 import TransactionModal from '@/components/Dashboard/TransactionModal'
 import TransactionFilters from '@/components/Dashboard/TransactionFilters'
@@ -106,6 +107,7 @@ interface Subscription {
   amount: number
   lastCharge: string
   occurrences: number
+  status: 'new' | 'active' | 'discontinued'
 }
 
 interface UpcomingPayment {
@@ -129,6 +131,7 @@ export default function Home() {
   const [monthlyTrend, setMonthlyTrend] = useState<MonthlyTrendData[]>([])
   const [topMerchants, setTopMerchants] = useState<TopMerchant[]>([])
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
+  const [subscriptionsBasis, setSubscriptionsBasis] = useState<string>('')
   const [upcomingPayments, setUpcomingPayments] = useState<{ payments: UpcomingPayment[], summary: any }>({ payments: [], summary: {} })
   const [categoryAverages, setCategoryAverages] = useState<{ averages: any[], monthCount: number, totalAverage: number }>({ averages: [], monthCount: 0, totalAverage: 0 })
   const [drilldownCategory, setDrilldownCategory] = useState<string | null>(null)
@@ -155,6 +158,17 @@ export default function Home() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [previousMonthSpending, setPreviousMonthSpending] = useState<number>(0)
   const [showAddTransaction, setShowAddTransaction] = useState(false)
+
+  // Data quality (master CSV-derived flags)
+  const [dataQuality, setDataQuality] = useState<{
+    available: boolean
+    totals: { total: number; yearMismatch: number; futureDate: number; duplicate: number; largeAmount: number }
+    flagged: any[]
+    message?: string
+  }>({ available: false, totals: { total: 0, yearMismatch: 0, futureDate: 0, duplicate: 0, largeAmount: 0 }, flagged: [] })
+  const [showDataQuality, setShowDataQuality] = useState(false)
+  const [editingTransaction, setEditingTransaction] = useState<any>(null)
+  const [pdfViewUrl, setPdfViewUrl] = useState<string | null>(null)
 
   const [creditCardSortBy, setCreditCardSortBy] = useState<'bank' | 'used' | 'limit'>('used')
   const [creditCardSortOrder, setCreditCardSortOrder] = useState<'asc' | 'desc'>('desc')
@@ -186,6 +200,7 @@ export default function Home() {
         fetchUpcomingPayments(),
         fetchExchangeRate(),
         fetchCategoryAverages(),
+        fetchDataQuality(),
       ])
     }
     loadStatic()
@@ -263,6 +278,7 @@ export default function Home() {
       const res = await fetch('/api/dashboard/subscriptions')
       const data = await res.json()
       setSubscriptions(data.subscriptions || [])
+      setSubscriptionsBasis(data.basisLabel || '')
     } catch (error) {
       console.error('Error fetching subscriptions:', error)
     }
@@ -389,6 +405,18 @@ export default function Home() {
     } catch (e) {
       console.error('Update error', e)
       alert('Failed to update balance')
+    }
+  }
+
+  const fetchDataQuality = async () => {
+    try {
+      const res = await fetch('/api/dashboard/data-quality')
+      if (res.ok) {
+        const data = await res.json()
+        setDataQuality(data)
+      }
+    } catch (e) {
+      console.error('Error fetching data quality:', e)
     }
   }
 
@@ -587,6 +615,30 @@ export default function Home() {
                 <Plus className="w-3 h-3" />
                 Add Transaction
               </button>
+
+              <a
+                href="https://docs.google.com/spreadsheets/d/10ViyHlv1pb1XW4U4C0E8OmieXiiw9C6dU8mgRLhp_O0/edit?gid=0#gid=0"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Open manual entry Google Sheet"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm transition-all text-[10px] font-medium"
+              >
+                <FileSpreadsheet className="w-3 h-3" />
+                Sheet
+                <ExternalLink className="w-2.5 h-2.5 opacity-70" />
+              </a>
+
+              {/* Data Quality flags badge — only shown when there are flags */}
+              {dataQuality.available && (dataQuality.totals.yearMismatch + dataQuality.totals.duplicate + dataQuality.totals.futureDate + dataQuality.totals.largeAmount) > 0 && (
+                <button
+                  onClick={() => setShowDataQuality(true)}
+                  title="Click to review data-quality flags"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/30 dark:hover:bg-amber-900/50 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700 rounded-lg shadow-sm transition-all text-[10px] font-medium"
+                >
+                  <AlertTriangle className="w-3 h-3" />
+                  {dataQuality.totals.yearMismatch + dataQuality.totals.duplicate + dataQuality.totals.futureDate + dataQuality.totals.largeAmount} flags
+                </button>
+              )}
 
               <Link
                 href="/profile"
@@ -794,19 +846,23 @@ export default function Home() {
             <div className="flex items-center justify-between mb-1 shrink-0">
               <h2 className="font-semibold text-xs flex items-center gap-1">
                 <Repeat className="w-3.5 h-3.5 text-indigo-600" />
-                Subscriptions ({subscriptions.length})
+                Subscriptions ({subscriptions.filter(s => s.status !== 'discontinued').length})
               </h2>
-              <span className="text-[8px] text-slate-400" title="Derived from last month's statements — not affected by the month selector">
-                {lastMonthLabel}
+              <span className="text-[8px] text-slate-400" title="Derived from recent statements">
+                {subscriptionsBasis || lastMonthLabel}
               </span>
             </div>
             <div className="space-y-0.5 flex-1 overflow-y-auto min-h-0 pr-1">
               {(subscriptions || []).length > 0 ? (
                 <>
                   {(subscriptions || []).map((sub) => (
-                    <div key={sub.name} className="flex items-center justify-between p-0.5 border-b border-slate-100 dark:border-slate-700 last:border-0">
+                    <div key={sub.name} className={`flex items-center justify-between p-0.5 border-b border-slate-100 dark:border-slate-700 last:border-0 ${sub.status === 'discontinued' ? 'opacity-50' : ''}`}>
                       <div className="min-w-0">
-                        <div className="font-medium text-[10px] truncate" title={sub.name}>{sub.name}</div>
+                        <div className="flex items-center gap-1">
+                          <div className={`font-medium text-[10px] truncate ${sub.status === 'discontinued' ? 'line-through' : ''}`} title={sub.name}>{sub.name}</div>
+                          {sub.status === 'new' && <span className="px-1 py-[1px] rounded-[2px] bg-green-100 text-green-700 text-[6px] font-bold uppercase tracking-wider leading-none">New</span>}
+                          {sub.status === 'discontinued' && <span className="px-1 py-[1px] rounded-[2px] bg-red-100 text-red-700 text-[6px] font-bold uppercase tracking-wider leading-none">Ended</span>}
+                        </div>
                         <div className="text-[8px] text-slate-400">{sub.category}</div>
                       </div>
                       <div className="text-[10px] font-medium text-indigo-600 shrink-0">{formatCurrency(sub.amount)}</div>
@@ -814,14 +870,14 @@ export default function Home() {
                   ))}
                 </>
               ) : (
-                <div className="text-[9px] text-slate-400 text-center py-4">No subscriptions charged in {lastMonthLabel}</div>
+                <div className="text-[9px] text-slate-400 text-center py-4">No subscriptions found</div>
               )}
             </div>
-            {(subscriptions || []).length > 0 && (
+            {(subscriptions || []).filter(s => s.status !== 'discontinued').length > 0 && (
               <div className="pt-1 border-t border-slate-200 mt-1 shrink-0">
                 <div className="flex justify-between text-[10px] font-bold">
                   <span>Total/mo</span>
-                  <span className="text-indigo-600">{formatCurrency((subscriptions || []).reduce((s, sub) => s + (sub.amount || 0), 0))}</span>
+                  <span className="text-indigo-600">{formatCurrency((subscriptions || []).filter(s => s.status !== 'discontinued').reduce((s, sub) => s + (sub.amount || 0), 0))}</span>
                 </div>
               </div>
             )}
@@ -927,6 +983,15 @@ export default function Home() {
                 )
               })()}
 
+              <button
+                onClick={() => setShowTransactions(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md shadow-sm transition-all text-[10px] font-medium"
+                title={`View transactions for ${dateFormat(new Date(selectedMonth + '-01'), 'MMMM yyyy')}`}
+              >
+                <ListFilter className="w-3 h-3" />
+                Show Transactions
+              </button>
+
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => changeMonth('prev')}
@@ -948,8 +1013,8 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Charts Row 1 - 3 columns */}
-        < div className="grid grid-cols-4 gap-1.5 flex-1 min-h-0" >
+        {/* Charts Row 1 - 2 columns */}
+        < div className="grid grid-cols-2 gap-1.5 flex-1 min-h-0" >
           {/* Credit Cards - Grid Layout */}
           <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-1.5 border border-slate-200 dark:border-slate-700 h-full flex flex-col">
             <div className="flex items-center justify-between mb-1">
@@ -1114,130 +1179,7 @@ export default function Home() {
                 })}
             </div>
           </div>
-          {/* Category Spending Comparison (Last 3 Months) */}
-          < div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-2 border border-slate-200 dark:border-slate-700 h-full flex flex-col" >
-            <h2 className="font-semibold mb-1 text-xs flex items-center gap-1">
-              <TrendingUp className="w-3.5 h-3.5 text-blue-600" />
-              Top Categories & Merchants
-            </h2>
-            <div className="grid grid-cols-2 gap-2 flex-1 min-h-0">
-              {/* Categories */}
-              <div className="flex flex-col h-full">
-                <h3 className="text-[8px] font-medium text-slate-500 dark:text-slate-400 mb-1">
-                  Categories {drilldownCategory ? '(Filtered)' : ''}
-                </h3>
-                {
-                  (categoryData || []).length > 0 ? (
-                    <div className="flex-1 min-h-0">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={(categoryData || []).slice(0, 5)} layout="vertical">
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                          <XAxis type="number" tick={{ fontSize: 7 }} tickFormatter={(v) => v > 999 ? `${(v / 1000).toFixed(0)}k` : v.toString()} stroke="#94a3b8" />
-                          <YAxis dataKey="category" type="category" tick={{ fontSize: 7, width: 60 }} width={60} stroke="#94a3b8" />
-                          <Tooltip
-                            formatter={(v: number | undefined) => formatCurrency(v || 0)}
-                            contentStyle={{ fontSize: '9px' }}
-                            cursor={{ fill: 'transparent' }}
-                          />
-                          <Bar
-                            dataKey="amount"
-                            radius={[0, 4, 4, 0]}
-                            onClick={(data: any) => setDrilldownCategory(data.category === drilldownCategory ? null : data.category)}
-                            cursor="pointer"
-                          >
-                            {(categoryData || []).slice(0, 5).map((entry, index) => (
-                              <Cell
-                                key={`cell-${index}`}
-                                fill={getCategoryColor((entry.category || 'Other') as TransactionCategory)}
-                                opacity={drilldownCategory && drilldownCategory !== entry.category ? 0.3 : 1}
-                              />
-                            ))}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  ) : (
-                    <div className="flex-1 flex items-center justify-center text-slate-400 text-[10px]">No category data</div>
-                  )
-                }
-              </div >
 
-              {/* Merchants */}
-              <div className="flex flex-col h-full">
-                <div className="flex items-center justify-between mb-1">
-                  <h3 className="text-[8px] font-medium text-slate-500 dark:text-slate-400 truncate max-w-[100px]" title={drilldownCategory ? `Merchants in ${drilldownCategory}` : 'Top Merchants'}>
-                    {drilldownCategory ? `${drilldownCategory}` : 'Merchants'}
-                  </h3>
-                  {drilldownCategory && (
-                    <button
-                      onClick={() => setDrilldownCategory(null)}
-                      className="text-[8px] text-blue-600 hover:text-blue-800 flex items-center gap-0.5"
-                    >
-                      <X className="w-2 h-2" /> Reset
-                    </button>
-                  )}
-                </div>
-                {
-                  (topMerchants || []).length > 0 ? (
-                    <div className="flex-1 min-h-0">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={(topMerchants || []).slice(0, 5)} layout="vertical">
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                          <XAxis type="number" tick={{ fontSize: 7 }} tickFormatter={(v) => v > 999 ? `${(v / 1000).toFixed(0)}k` : v.toString()} stroke="#94a3b8" />
-                          <YAxis dataKey="name" type="category" tick={{ fontSize: 7, width: 60 }} width={60} stroke="#94a3b8" />
-                          <Tooltip
-                            formatter={(v: number | undefined) => formatCurrency(v || 0)}
-                            contentStyle={{ fontSize: '9px' }}
-                          />
-                          <Bar dataKey="amount" fill="#10B981" radius={[0, 4, 4, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  ) : (
-                    <div className="flex-1 flex items-center justify-center text-slate-400 text-[10px]">No data</div>
-                  )
-                }
-              </div>
-            </div>
-          </div >
-
-          {/* Daily Spending Line Chart */}
-          < div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-2 border border-slate-200 dark:border-slate-700 h-full flex flex-col" >
-            <h2 className="font-semibold mb-1 text-xs flex items-center gap-1">
-              <Zap className="w-3.5 h-3.5 text-amber-600" />
-              Daily Spending - {dateFormat(new Date(selectedMonth + '-01'), 'MMM')}
-            </h2>
-            {
-              (dailyData || []).some(d => (d.total as number) > 0) ? (
-                <div className="flex-1 min-h-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={dailyData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                      <XAxis dataKey="day" tick={{ fontSize: 7 }} stroke="#94a3b8" />
-                      <YAxis tick={{ fontSize: 7 }} tickFormatter={(v) => v > 999 ? `${(v / 1000).toFixed(0)}k` : v.toString()} stroke="#94a3b8" />
-                      <Tooltip
-                        formatter={(v: number | undefined, name: string | undefined) => [formatCurrency(v || 0), name || '']}
-                        contentStyle={{ fontSize: '8px', borderRadius: '6px' }}
-                        cursor={{ fill: '#f1f5f9' }}
-                      />
-                      <Legend iconSize={6} wrapperStyle={{ fontSize: '8px' }} />
-                      {(dailyCategories || []).slice(0, 5).map((cat) => (
-                        <Bar
-                          key={cat}
-                          dataKey={cat}
-                          stackId="a"
-                          fill={getCategoryColor(cat as TransactionCategory)}
-                          radius={[0, 0, 0, 0]}
-                        />
-                      ))}
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="flex-1 flex items-center justify-center text-slate-400 text-[10px]">No daily data</div>
-              )
-            }
-          </div >
 
           {/* Category Distribution Donut with Details */}
           < div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-2 border border-slate-200 dark:border-slate-700 h-full flex flex-col" >
@@ -1247,36 +1189,56 @@ export default function Home() {
             </h2>
             {
               (categoryData || []).length > 0 ? (
-                <div className="flex gap-2 flex-1 min-h-0">
-                  <ResponsiveContainer width="50%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={(categoryData || []).slice(0, 8) as any}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={true}
-                        label={({ name, percent }: any) => `${name}`}
-                        outerRadius={50}
-                        innerRadius={25}
-                        fill="#8884d8"
-                        dataKey="amount"
-                        nameKey="category"
-                        onClick={(data: any) => {
-                          if (data && data.category) {
-                            setTransactionFilters({ ...transactionFilters, selectedCategory: data.category })
-                            setShowTransactions(true)
+                <div className="flex gap-2 flex-1 min-h-0 items-stretch">
+                  <div className="w-1/2 h-full relative" style={{ minHeight: 140 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart margin={{ top: 4, right: 4, left: 4, bottom: 4 }}>
+                        <Pie
+                          data={(categoryData || []).slice(0, 8) as any}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={({ percent }: any) =>
+                            percent && percent > 0.06 ? `${(percent * 100).toFixed(0)}%` : ''
                           }
-                        }}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        {(categoryData || []).slice(0, 8).map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={getCategoryColor((entry.category || 'Other') as TransactionCategory)} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(v: number | undefined) => formatCurrency(v || 0)} contentStyle={{ fontSize: '9px' }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="flex-1 overflow-y-auto space-y-0.5">
+                          outerRadius="85%"
+                          innerRadius="55%"
+                          paddingAngle={1}
+                          fill="#8884d8"
+                          dataKey="amount"
+                          nameKey="category"
+                          onClick={(data: any) => {
+                            if (data && data.category) {
+                              setTransactionFilters({ ...transactionFilters, selectedCategory: data.category })
+                              setShowTransactions(true)
+                            }
+                          }}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          {(categoryData || []).slice(0, 8).map((entry, index) => (
+                            <Cell
+                              key={`cell-${index}`}
+                              fill={getCategoryColor((entry.category || 'Other') as TransactionCategory)}
+                              stroke="#fff"
+                              strokeWidth={1}
+                            />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(v: number | undefined) => formatCurrency(v || 0)}
+                          contentStyle={{ fontSize: '10px' }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    {/* Center total label */}
+                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                      <div className="text-[8px] text-slate-400 leading-none">Total</div>
+                      <div className="text-[10px] font-semibold text-slate-700 dark:text-slate-200 leading-tight">
+                        {formatCurrency((categoryData || []).reduce((s, c) => s + (c.amount || 0), 0))}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto space-y-0.5 pr-1">
                     {(categoryData || []).slice(0, 10).map((item) => (
                       <div
                         key={item.category}
@@ -1284,17 +1246,17 @@ export default function Home() {
                           setTransactionFilters({ ...transactionFilters, selectedCategory: item.category })
                           setShowTransactions(true)
                         }}
-                        className="flex items-center justify-between text-[8px] border-b border-slate-100 dark:border-slate-700 last:border-0 pb-0.5 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                        className="flex items-center justify-between text-[9px] border-b border-slate-100 dark:border-slate-700 last:border-0 py-0.5 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
                         title={`Click to view ${item.category} transactions`}
                       >
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
                           <div
-                            className="w-1.5 h-1.5 rounded-full"
+                            className="w-2 h-2 rounded-full flex-shrink-0"
                             style={{ backgroundColor: getCategoryColor(item.category as TransactionCategory) }}
                           />
-                          <span className="truncate max-w-[60px]">{item.category}</span>
+                          <span className="truncate">{item.category}</span>
                         </div>
-                        <div className="text-right">
+                        <div className="text-right flex-shrink-0 ml-1">
                           <div className="font-medium">{formatCurrency(item.amount)}</div>
                           <div className="text-[7px] text-slate-400">{item.percentage.toFixed(1)}%</div>
                         </div>
@@ -1330,8 +1292,8 @@ export default function Home() {
               <div className="text-sm font-bold text-blue-700">{formatCurrency(monthlyLoanPayments)}</div>
             </div>
             <div className="text-center p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded">
-              <div className="text-[9px] text-indigo-600">Subscriptions ({subscriptions.length})</div>
-              <div className="text-sm font-bold text-indigo-700">{formatCurrency(subscriptions.reduce((s, sub) => s + sub.amount, 0))}</div>
+              <div className="text-[9px] text-indigo-600">Subscriptions ({subscriptions.filter(s => s.status !== 'discontinued').length})</div>
+              <div className="text-sm font-bold text-indigo-700">{formatCurrency(subscriptions.filter(s => s.status !== 'discontinued').reduce((s, sub) => s + sub.amount, 0))}</div>
             </div>
             <div className="text-center p-2 bg-purple-50 dark:bg-purple-900/20 rounded">
               <div className="text-[9px] text-purple-600">This Month Spending</div>
@@ -1345,24 +1307,249 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Transactions Section */}
-      < div className="mt-4" >
-        <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 p-3">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-sm flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-blue-600" />
-              Transactions ({filteredTransactions.length})
-            </h2>
-            <button
-              onClick={() => setShowTransactions(!showTransactions)}
-              className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-            >
-              {showTransactions ? 'Hide' : 'Show'} Transactions
-            </button>
+      {/* PDF Viewer Modal */}
+      {pdfViewUrl && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => setPdfViewUrl(null)}>
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-5xl h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-200 dark:border-slate-700">
+              <h2 className="font-semibold text-sm">Document Viewer</h2>
+              <button onClick={() => setPdfViewUrl(null)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"><X className="w-4 h-4 text-slate-600" /></button>
+            </div>
+            <div className="flex-1 min-h-0 bg-slate-100 dark:bg-slate-900 rounded-b-lg overflow-hidden">
+              <iframe src={pdfViewUrl} className="w-full h-full border-0" />
+            </div>
           </div>
+        </div>
+      )}
 
-          {showTransactions && (
-            <>
+      {/* Data Quality Modal */}
+      {showDataQuality && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowDataQuality(false)}
+        >
+          <div
+            className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200 dark:border-slate-700">
+              <h2 className="font-semibold text-sm flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                Data Quality — flagged transactions
+              </h2>
+              <button
+                onClick={() => setShowDataQuality(false)}
+                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
+                title="Close"
+              >
+                <X className="w-4 h-4 text-slate-600" />
+              </button>
+            </div>
+            <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-700/50 grid grid-cols-5 gap-2 text-[10px]">
+              <div className="text-center p-1.5 bg-slate-50 dark:bg-slate-700/50 rounded">
+                <div className="text-slate-500">Total tx</div>
+                <div className="font-bold text-slate-700 dark:text-slate-200">{dataQuality.totals.total}</div>
+              </div>
+              <div className="text-center p-1.5 bg-amber-50 dark:bg-amber-900/20 rounded">
+                <div className="text-amber-700">Year mismatch</div>
+                <div className="font-bold text-amber-700">{dataQuality.totals.yearMismatch}</div>
+              </div>
+              <div className="text-center p-1.5 bg-rose-50 dark:bg-rose-900/20 rounded">
+                <div className="text-rose-700">Duplicate</div>
+                <div className="font-bold text-rose-700">{dataQuality.totals.duplicate}</div>
+              </div>
+              <div className="text-center p-1.5 bg-purple-50 dark:bg-purple-900/20 rounded">
+                <div className="text-purple-700">Future date</div>
+                <div className="font-bold text-purple-700">{dataQuality.totals.futureDate}</div>
+              </div>
+              <div className="text-center p-1.5 bg-blue-50 dark:bg-blue-900/20 rounded">
+                <div className="text-blue-700">Large debit</div>
+                <div className="font-bold text-blue-700">{dataQuality.totals.largeAmount}</div>
+              </div>
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              {dataQuality.flagged.length > 0 ? (
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 dark:bg-slate-700/50 sticky top-0 z-10">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-700 dark:text-slate-300">Date</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-700 dark:text-slate-300">Description</th>
+                      <th className="px-3 py-2 text-right font-semibold text-slate-700 dark:text-slate-300">Amount</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-700 dark:text-slate-300">Bank</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-700 dark:text-slate-300">Source file</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-700 dark:text-slate-300">Why flagged</th>
+                      <th className="px-3 py-2 text-right font-semibold text-slate-700 dark:text-slate-300">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                    {dataQuality.flagged.map((row, i) => (
+                      <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
+                        {editingTransaction?.id === row.id ? (
+                          <td colSpan={7} className="px-3 py-2 bg-slate-100 dark:bg-slate-800">
+                            <div className="flex gap-2 text-xs">
+                              <input type="text" value={editingTransaction.date_iso} onChange={e => setEditingTransaction({...editingTransaction, date_iso: e.target.value})} className="border p-1 rounded" placeholder="Date (YYYY-MM-DD)" />
+                              <input type="text" value={editingTransaction.description} onChange={e => setEditingTransaction({...editingTransaction, description: e.target.value})} className="border p-1 rounded flex-1" placeholder="Description" />
+                              <input type="number" value={editingTransaction.amount} onChange={e => setEditingTransaction({...editingTransaction, amount: parseFloat(e.target.value)})} className="border p-1 rounded w-24" placeholder="Amount" />
+                              <select value={editingTransaction.direction} onChange={e => setEditingTransaction({...editingTransaction, direction: e.target.value})} className="border p-1 rounded">
+                                <option value="debit">debit</option>
+                                <option value="credit">credit</option>
+                              </select>
+                              <button onClick={async () => {
+                                try {
+                                  const res = await fetch('/api/dashboard/update-transaction', {
+                                    method: 'POST',
+                                    headers: {'Content-Type': 'application/json'},
+                                    body: JSON.stringify(editingTransaction)
+                                  })
+                                  if (res.ok) {
+                                    setEditingTransaction(null)
+                                    fetchData() // reload
+                                  } else { alert('Failed') }
+                                } catch(e) { alert('Error') }
+                              }} className="bg-blue-600 text-white px-2 rounded">Save</button>
+                              <button onClick={() => setEditingTransaction(null)} className="px-2">Cancel</button>
+                            </div>
+                          </td>
+                        ) : (
+                          <>
+                            <td className="px-3 py-1.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">{row.date || '—'}</td>
+                            <td className="px-3 py-1.5 text-slate-900 dark:text-slate-100 font-medium">{row.description}</td>
+                            <td className={`px-3 py-1.5 text-right font-semibold whitespace-nowrap ${row.direction === 'debit' ? 'text-red-600' : 'text-green-600'}`}>
+                              {formatCurrency(row.amount)}
+                            </td>
+                            <td className="px-3 py-1.5 text-slate-600 dark:text-slate-400">{row.bank}</td>
+                            <td className="px-3 py-1.5 text-slate-500 text-[10px] truncate max-w-[200px]" title={row.source}>{row.source}</td>
+                            <td className="px-3 py-1.5">
+                              <div className="flex flex-wrap gap-1">
+                                {row.flags.yearMismatch && <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[9px]">year mismatch</span>}
+                                {row.flags.duplicate && <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 text-[9px]">duplicate</span>}
+                                {row.flags.futureDate && <span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 text-[9px]">future date</span>}
+                                {row.flags.largeAmount && <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 text-[9px]">large</span>}
+                              </div>
+                              {row.notes && <div className="text-[9px] text-slate-400 mt-0.5">{row.notes}</div>}
+                            </td>
+                            <td className="px-3 py-1.5 text-right space-x-2 whitespace-nowrap">
+                              {row.source && (
+                                <button onClick={() => setPdfViewUrl(`/api/statements/pdf?file=${encodeURIComponent(row.source)}`)} className="text-[10px] text-blue-600 hover:underline">
+                                  View PDF
+                                </button>
+                              )}
+                              <button onClick={() => setEditingTransaction({
+                                id: row.id,
+                                old_description: row.description,
+                                old_amount: row.amount,
+                                date_iso: row.date,
+                                description: row.description,
+                                amount: row.amount,
+                                direction: row.direction,
+                                source_file: row.source
+                              })} className="text-[10px] text-indigo-600 hover:underline">
+                                Edit
+                              </button>
+                              <button onClick={async () => {
+                                if (confirm('Are you sure you want to delete this record?')) {
+                                  try {
+                                    const res = await fetch(`/api/dashboard/update-transaction?id=${row.id}&source_file=${encodeURIComponent(row.source)}&old_description=${encodeURIComponent(row.description)}&old_amount=${row.amount}`, { method: 'DELETE' });
+                                    if (res.ok) {
+                                      fetchData();
+                                    } else {
+                                      alert('Failed to delete');
+                                    }
+                                  } catch (e) { alert('Error deleting') }
+                                }
+                              }} className="text-[10px] text-red-600 hover:text-red-800" title="Delete">
+                                <Trash2 className="w-3 h-3 inline-block" />
+                              </button>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="text-center py-8 text-slate-400 text-sm">
+                  {dataQuality.message || 'No flagged transactions.'}
+                </div>
+              )}
+            </div>
+            <div className="px-4 py-2 border-t border-slate-200 dark:border-slate-700 text-[10px] text-slate-500">
+              Source: <code className="px-1 bg-slate-100 dark:bg-slate-700 rounded">data/master_transactions.csv</code>
+              {' '}— rebuild with{' '}
+              <code className="px-1 bg-slate-100 dark:bg-slate-700 rounded">python3 scripts/build_master_csv.py</code>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transaction Detail Modal (single tx) */}
+      <TransactionModal
+        transaction={selectedTransaction}
+        onClose={() => setSelectedTransaction(null)}
+        onViewPdf={(sourceFile) => {
+          setSelectedTransaction(null)
+          setPdfViewUrl(`/api/statements/pdf?file=${encodeURIComponent(sourceFile)}`)
+        }}
+        onViewSimilar={(tx) => {
+          setSelectedTransaction(null)
+          setTransactionFilters({
+            ...transactionFilters,
+            selectedMerchant: tx.merchant || '',
+            selectedCategory: tx.category || '',
+          })
+          setShowTransactions(true)
+        }}
+      />
+
+      {/* Transactions Modal Overlay — defaults to selected month (1st - 31st) */}
+      {showTransactions && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowTransactions(false)}
+        >
+          <div
+            className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200 dark:border-slate-700">
+              <h2 className="font-semibold text-sm flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-blue-600" />
+                Transactions — {dateFormat(new Date(selectedMonth + '-01'), 'MMMM yyyy')}
+                <span className="text-[10px] font-normal text-slate-500">
+                  ({filteredTransactions.length} of {transactions.length})
+                </span>
+              </h2>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => changeMonth('prev')}
+                  className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
+                  title="Previous month"
+                >
+                  <ChevronLeft className="w-4 h-4 text-slate-600" />
+                </button>
+                <span className="text-xs font-medium min-w-[80px] text-center">
+                  {dateFormat(new Date(selectedMonth + '-01'), 'MMM yyyy')}
+                </span>
+                <button
+                  onClick={() => changeMonth('next')}
+                  className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
+                  title="Next month"
+                >
+                  <ChevronRight className="w-4 h-4 text-slate-600" />
+                </button>
+                <button
+                  onClick={() => setShowTransactions(false)}
+                  className="ml-2 p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
+                  title="Close"
+                >
+                  <X className="w-4 h-4 text-slate-600" />
+                </button>
+              </div>
+            </div>
+
+            {/* Filters */}
+            <div className="px-4 pt-2 pb-1 border-b border-slate-100 dark:border-slate-700/50">
               <TransactionFilters
                 searchQuery={transactionFilters.searchQuery}
                 onSearchChange={(query) => setTransactionFilters({ ...transactionFilters, searchQuery: query })}
@@ -1376,115 +1563,103 @@ export default function Home() {
                 merchants={merchants}
                 onClear={() => setTransactionFilters({ searchQuery: '', selectedCategory: '', selectedMerchant: '', dateRange: { start: '', end: '' } })}
               />
+            </div>
 
-              <div className="max-h-96 overflow-y-auto">
-                {filteredTransactions.length > 0 ? (
-                  <table className="w-full text-xs">
-                    <thead className="bg-slate-50 dark:bg-slate-700/50 sticky top-0">
-                      <tr>
-                        <th className="px-2 py-1.5 text-left font-semibold text-slate-700 dark:text-slate-300">Date</th>
-                        <th className="px-2 py-1.5 text-left font-semibold text-slate-700 dark:text-slate-300">Description</th>
-                        <th className="px-2 py-1.5 text-left font-semibold text-slate-700 dark:text-slate-300">Merchant</th>
-                        <th className="px-2 py-1.5 text-left font-semibold text-slate-700 dark:text-slate-300">Category</th>
-                        <th className="px-2 py-1.5 text-left font-semibold text-slate-700 dark:text-slate-300">Card</th>
-                        <th className="px-2 py-1.5 text-right font-semibold text-slate-700 dark:text-slate-300">Amount</th>
+            {/* Scrollable transaction table */}
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              {filteredTransactions.length > 0 ? (
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 dark:bg-slate-700/50 sticky top-0 z-10">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-700 dark:text-slate-300">Date</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-700 dark:text-slate-300">Description</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-700 dark:text-slate-300">Merchant</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-700 dark:text-slate-300">Category</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-700 dark:text-slate-300">Card</th>
+                      <th className="px-3 py-2 text-right font-semibold text-slate-700 dark:text-slate-300">Amount</th>
+                      <th className="px-3 py-2 text-right font-semibold text-slate-700 dark:text-slate-300">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                    {filteredTransactions.map((tx) => (
+                      <tr
+                        key={tx.id}
+                        onClick={() => setSelectedTransaction(tx)}
+                        className="hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors"
+                      >
+                        <td className="px-3 py-1.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                          {format(new Date(tx.date), 'MMM dd, yyyy')}
+                        </td>
+                        <td className="px-3 py-1.5 text-slate-900 dark:text-slate-100 font-medium">
+                          {tx.description}
+                        </td>
+                        <td className="px-3 py-1.5 text-slate-600 dark:text-slate-400">
+                          {tx.merchant || '-'}
+                        </td>
+                        <td className="px-3 py-1.5">
+                          {tx.category ? (
+                            <span
+                              className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium"
+                              style={{ backgroundColor: getCategoryColor(tx.category as TransactionCategory) + '40', color: getCategoryColor(tx.category as TransactionCategory) }}
+                            >
+                              {tx.category}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-[10px]">-</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-1.5 text-slate-600 dark:text-slate-400 text-[10px] whitespace-nowrap">
+                          {tx.creditCard ? `${tx.creditCard.bank} •••• ${tx.creditCard.maskedNumber.slice(-4)}` : '-'}
+                        </td>
+                        <td className="px-3 py-1.5 text-right font-semibold text-red-600 dark:text-red-400 whitespace-nowrap">
+                          {formatCurrency(tx.amount)}
+                        </td>
+                        <td className="px-3 py-1.5 text-right whitespace-nowrap">
+                          {tx.sourceFile && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setPdfViewUrl(`/api/statements/pdf?file=${encodeURIComponent(tx.sourceFile)}`)
+                              }}
+                              className="text-[10px] text-blue-600 hover:underline"
+                            >
+                              View PDF
+                            </button>
+                          )}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                      {filteredTransactions.map((tx) => (
-                        <tr
-                          key={tx.id}
-                          onClick={() => setSelectedTransaction(tx)}
-                          className="hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors"
-                        >
-                          <td className="px-2 py-1.5 text-slate-600 dark:text-slate-400">
-                            {format(new Date(tx.date), 'MMM dd, yyyy')}
-                          </td>
-                          <td className="px-2 py-1.5 text-slate-900 dark:text-slate-100 font-medium">
-                            {tx.description}
-                          </td>
-                          <td className="px-2 py-1.5 text-slate-600 dark:text-slate-400">
-                            {tx.merchant || '-'}
-                          </td>
-                          <td className="px-2 py-1.5">
-                            {tx.category ? (
-                              <span
-                                className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium"
-                                style={{ backgroundColor: getCategoryColor(tx.category as TransactionCategory) + '40', color: getCategoryColor(tx.category as TransactionCategory) }}
-                              >
-                                {tx.category}
-                              </span>
-                            ) : (
-                              <span className="text-slate-400 text-[10px]">-</span>
-                            )}
-                          </td>
-                          <td className="px-2 py-1.5 text-slate-600 dark:text-slate-400 text-[10px]">
-                            {tx.creditCard ? `${tx.creditCard.bank} •••• ${tx.creditCard.maskedNumber.slice(-4)}` : '-'}
-                          </td>
-                          <td className="px-2 py-1.5 text-right font-semibold text-red-600 dark:text-red-400">
-                            {formatCurrency(tx.amount)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <div className="text-center py-8 text-slate-400 text-sm">
-                    No transactions found for the selected filters
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-        {/* Transaction Modal */}
-        <TransactionModal
-          transaction={selectedTransaction}
-          onClose={() => setSelectedTransaction(null)}
-          onViewSimilar={(tx) => {
-            setSelectedTransaction(null)
-            setTransactionFilters({
-              ...transactionFilters,
-              selectedMerchant: tx.merchant || '',
-              selectedCategory: tx.category || '',
-            })
-            setShowTransactions(true)
-          }}
-        />
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="text-center py-12 text-slate-400 text-sm">
+                  No transactions found for {dateFormat(new Date(selectedMonth + '-01'), 'MMMM yyyy')}{' '}
+                  with the selected filters.
+                </div>
+              )}
+            </div>
 
-        {/* Transaction List Modal */}
-        {showTransactions && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowTransactions(false)}>
-            <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <TransactionFilters
-                searchQuery={transactionFilters.searchQuery}
-                onSearchChange={(q) => setTransactionFilters(prev => ({ ...prev, searchQuery: q }))}
-                selectedCategory={transactionFilters.selectedCategory}
-                onCategoryChange={(c) => setTransactionFilters(prev => ({ ...prev, selectedCategory: c }))}
-                selectedMerchant={transactionFilters.selectedMerchant}
-                onMerchantChange={(m) => setTransactionFilters(prev => ({ ...prev, selectedMerchant: m }))}
-                dateRange={transactionFilters.dateRange}
-                onDateRangeChange={(r) => setTransactionFilters(prev => ({ ...prev, dateRange: r }))}
-                categories={categories}
-                merchants={merchants}
-                onClear={() => setTransactionFilters({
-                  searchQuery: '',
-                  selectedCategory: '',
-                  selectedMerchant: '',
-                  dateRange: { start: '', end: '' },
-                })}
-              />
-              <div className="flex justify-end p-2 border-t border-slate-200 dark:border-slate-700">
-                <button
-                  onClick={() => setShowTransactions(false)}
-                  className="px-4 py-2 bg-slate-200 dark:bg-slate-700 rounded text-sm text-slate-700 dark:text-slate-300"
-                >
-                  Close
-                </button>
-              </div>
+            {/* Modal footer */}
+            <div className="flex justify-between items-center px-4 py-2 border-t border-slate-200 dark:border-slate-700 text-[10px] text-slate-500">
+              <span>
+                Total: <span className="font-semibold text-red-600">
+                  {formatCurrency(filteredTransactions.reduce((s, t) => s + (t.amount || 0), 0))}
+                </span>
+              </span>
+              <button
+                onClick={() => setShowTransactions(false)}
+                className="px-4 py-1.5 bg-slate-200 dark:bg-slate-700 rounded text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
+              >
+                Close
+              </button>
             </div>
           </div>
-        )}
+        </div>
+      )}
+
+      {/* (Asset breakdown popup follows) */}
+      <div>
+        {/* Spacer block to keep subsequent siblings (assets/popups) at the same JSX nesting level */}
 
 
         {/* Assets Breakdown Popup */}
