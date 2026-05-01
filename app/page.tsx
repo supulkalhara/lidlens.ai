@@ -172,31 +172,44 @@ export default function Home() {
   const [merchants, setMerchants] = useState<string[]>([])
 
 
+  // "Static" data — fetched once on mount. These do NOT change with the
+  // month selector. In particular, installments & subscriptions represent
+  // the state as of the previous calendar month (a stable snapshot), not
+  // whichever month the user is analyzing.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    const loadData = async () => {
+    const loadStatic = async () => {
+      await Promise.allSettled([
+        fetchAllData(), // accounts, credit cards, loans
+        fetchInstallments(),
+        fetchSubscriptions(),
+        fetchUpcomingPayments(),
+        fetchExchangeRate(),
+        fetchCategoryAverages(),
+      ])
+    }
+    loadStatic()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Month-dependent data — refetches when the month selector changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const loadMonth = async () => {
       try {
-        // Use Promise.allSettled to ensure all requests complete even if some fail
         await Promise.allSettled([
-          fetchAllData(), // This fetches credit cards with all statements
           fetchCategoryData(),
-          fetchInstallments(),
-          fetchExchangeRate(),
           fetchMonthlyTrend(),
           fetchTopMerchants(),
-          fetchSubscriptions(),
-          fetchUpcomingPayments(),
-          fetchCategoryAverages(), // Static data - not month dependent
         ])
-        // Always set loading to false after all requests complete
         setLoading(false)
-        console.log('[Dashboard] All data loading completed for month:', selectedMonth)
+        console.log('[Dashboard] Month-scoped data loaded for', selectedMonth)
       } catch (error) {
-        console.error('[Dashboard] Error loading dashboard data:', error)
-        setLoading(false) // Always set loading to false, even on error
+        console.error('[Dashboard] Error loading month data:', error)
+        setLoading(false)
       }
     }
-    loadData()
+    loadMonth()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMonth])
 
@@ -439,17 +452,36 @@ export default function Home() {
   const totalSpending = (categoryData || []).reduce((sum, item) => sum + (item.amount || 0), 0)
   const creditUtilization = totalCreditLimit > 0 ? (totalCreditUsed / totalCreditLimit) * 100 : 0
 
-  // Monthly fixed obligations
-  const monthlyInstallments = (installments || []).reduce((sum, i) => sum + (i.installmentAmount || 0), 0)
-  const monthlyLoanPayments = (loans || []).reduce((sum, l) => sum + (l.monthlyPayment || 0), 0)
-  const totalMonthlyObligations = monthlyInstallments + monthlyLoanPayments
+  // ─── Last-month anchor ───────────────────────────────────────────
+  // Installments & Subscriptions are shown as they stood at the end of
+  // the previous calendar month — a stable snapshot independent of the
+  // month selector.
+  const lastMonthEnd = endOfMonth(subMonths(new Date(), 1))
+  const lastMonthStart = startOfMonth(subMonths(new Date(), 1))
+  const lastMonthLabel = dateFormat(lastMonthStart, 'MMM yyyy')
+
   const getInstallmentEndDate = (inst: Installment) => {
     if (inst.endDate) return inst.endDate instanceof Date ? inst.endDate : new Date(inst.endDate)
     const start = inst.startDate instanceof Date ? inst.startDate : new Date(inst.startDate)
     return addMonths(start, inst.remainingInstallments || 0)
   }
+
+  // Only installments that were still active during last month.
+  // "Active" = remainingInstallments > 0 AND the payment window overlaps
+  // last month (start <= lastMonthEnd AND end >= lastMonthStart).
+  const activeInstallments = (installments || []).filter((inst) => {
+    if ((inst.remainingInstallments ?? 0) <= 0) return false
+    const start = inst.startDate instanceof Date ? inst.startDate : new Date(inst.startDate)
+    const end = getInstallmentEndDate(inst)
+    return start <= lastMonthEnd && (!end || isNaN(end.getTime()) || end >= lastMonthStart)
+  })
+
+  // Monthly fixed obligations — based on the active set only.
+  const monthlyInstallments = activeInstallments.reduce((sum, i) => sum + (i.installmentAmount || 0), 0)
+  const monthlyLoanPayments = (loans || []).reduce((sum, l) => sum + (l.monthlyPayment || 0), 0)
+  const totalMonthlyObligations = monthlyInstallments + monthlyLoanPayments
   const installmentByCard: Map<string, { totalRemaining: number; latestEnd: Date | null }> = new Map()
-  for (const inst of installments || []) {
+  for (const inst of activeInstallments) {
     const cardName = inst.creditCard
       ? `${inst.creditCard.bank}${inst.creditCard.maskedNumber ? ' ' + inst.creditCard.maskedNumber : ''}`
       : 'Unknown'
@@ -654,70 +686,73 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Active Installments - Moved from Row 2 */}
-          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-1.5 border border-slate-200 dark:border-slate-700 h-full flex flex-col">
-            <h2 className="font-semibold mb-1 text-xs flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5 text-amber-600" />
-              Active Installments ({installments.length})
-            </h2>
-            {
-              (installments || []).length > 0 ? (
-                <>
-                  <div className="overflow-x-auto flex-1">
-                    <table className="w-full text-[8px]">
-                      <thead className="sticky top-0 bg-white dark:bg-slate-800">
-                        <tr className="border-b border-slate-200 dark:border-slate-700">
-                          <th className="text-left py-0.5 font-medium text-slate-500">Item</th>
-                          <th className="text-left py-0.5 font-medium text-slate-500">Card</th>
-                          <th className="text-right py-0.5 font-medium text-slate-500">Monthly</th>
-                          <th className="text-right py-0.5 font-medium text-slate-500">Left</th>
-                          <th className="text-right py-0.5 font-medium text-slate-500">Remaining</th>
-                          <th className="text-right py-0.5 font-medium text-slate-500">Free On</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(installments || []).map((inst) => {
-                          const cardName = inst.creditCard
-                            ? `${inst.creditCard.bank}${inst.creditCard.maskedNumber ? ' ' + inst.creditCard.maskedNumber : ''}`
-                            : 'N/A'
-                          const remainingAmount = inst.remainingAmount !== null && inst.remainingAmount !== undefined
-                            ? inst.remainingAmount
-                            : (inst.installmentAmount * inst.remainingInstallments)
-                          const freeOn = getInstallmentEndDate(inst)
-                          return (
-                            <tr key={inst.id} className="border-b border-slate-100 dark:border-slate-700 last:border-0">
-                              <td className="py-0.5 truncate max-w-[60px]" title={inst.description}>{inst.description}</td>
-                              <td className="py-0.5 text-[7px] text-slate-500 truncate max-w-[50px]" title={cardName}>{cardName}</td>
-                              <td className="py-0.5 text-right font-medium">{formatCurrency(inst.installmentAmount)}</td>
-                              <td className="py-0.5 text-right text-slate-400">{inst.remainingInstallments}/{inst.totalInstallments}</td>
-                              <td className="py-0.5 text-right font-semibold text-red-600">{formatCurrency(remainingAmount)}</td>
-                              <td className="py-0.5 text-right text-slate-500">
-                                {freeOn && !isNaN(freeOn.getTime()) ? dateFormat(freeOn, 'MMM yyyy') : '—'}
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
+          {/* Active Installments — state as of last calendar month */}
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-1.5 border border-slate-200 dark:border-slate-700 h-full flex flex-col min-h-0">
+            <div className="flex items-center justify-between mb-1 shrink-0">
+              <h2 className="font-semibold text-xs flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-amber-600" />
+                Active Installments ({activeInstallments.length})
+              </h2>
+              <span className="text-[8px] text-slate-400" title="Snapshot — does not change with the month selector">
+                as of {lastMonthLabel}
+              </span>
+            </div>
+            {activeInstallments.length > 0 ? (
+              <>
+                <div className="overflow-y-auto flex-1 min-h-0 pr-1">
+                  <table className="w-full text-[8px]">
+                    <thead className="sticky top-0 bg-white dark:bg-slate-800 z-10">
+                      <tr className="border-b border-slate-200 dark:border-slate-700">
+                        <th className="text-left py-0.5 font-medium text-slate-500">Item</th>
+                        <th className="text-left py-0.5 font-medium text-slate-500">Card</th>
+                        <th className="text-right py-0.5 font-medium text-slate-500">Monthly</th>
+                        <th className="text-right py-0.5 font-medium text-slate-500">Left</th>
+                        <th className="text-right py-0.5 font-medium text-slate-500">Remaining</th>
+                        <th className="text-right py-0.5 font-medium text-slate-500">Free On</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activeInstallments.map((inst) => {
+                        const cardName = inst.creditCard
+                          ? `${inst.creditCard.bank}${inst.creditCard.maskedNumber ? ' ' + inst.creditCard.maskedNumber : ''}`
+                          : 'N/A'
+                        const remainingAmount = inst.remainingAmount !== null && inst.remainingAmount !== undefined
+                          ? inst.remainingAmount
+                          : (inst.installmentAmount * inst.remainingInstallments)
+                        const freeOn = getInstallmentEndDate(inst)
+                        return (
+                          <tr key={inst.id} className="border-b border-slate-100 dark:border-slate-700 last:border-0">
+                            <td className="py-0.5 truncate max-w-[60px]" title={inst.description}>{inst.description}</td>
+                            <td className="py-0.5 text-[7px] text-slate-500 truncate max-w-[50px]" title={cardName}>{cardName}</td>
+                            <td className="py-0.5 text-right font-medium">{formatCurrency(inst.installmentAmount)}</td>
+                            <td className="py-0.5 text-right text-slate-400">{inst.remainingInstallments}/{inst.totalInstallments}</td>
+                            <td className="py-0.5 text-right font-semibold text-red-600">{formatCurrency(remainingAmount)}</td>
+                            <td className="py-0.5 text-right text-slate-500">
+                              {freeOn && !isNaN(freeOn.getTime()) ? dateFormat(freeOn, 'MMM yyyy') : '—'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {installmentByCard.size > 0 && (
+                  <div className="mt-1 border-t border-slate-200 dark:border-slate-700 pt-1 space-y-0.5 shrink-0">
+                    {Array.from(installmentByCard.entries()).map(([card, info]) => (
+                      <div key={card} className="flex items-center justify-between text-[8px] text-slate-500">
+                        <span className="truncate max-w-[120px]" title={card}>{card}</span>
+                        <span className="text-slate-700">
+                          {formatCurrency(info.totalRemaining)}
+                          {info.latestEnd ? ` · frees ${dateFormat(info.latestEnd, 'MMM yyyy')}` : ''}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                  {installmentByCard.size > 0 && (
-                    <div className="mt-1 border-t border-slate-200 dark:border-slate-700 pt-1 space-y-0.5">
-                      {Array.from(installmentByCard.entries()).map(([card, info]) => (
-                        <div key={card} className="flex items-center justify-between text-[8px] text-slate-500">
-                          <span className="truncate max-w-[120px]" title={card}>{card}</span>
-                          <span className="text-slate-700">
-                            {formatCurrency(info.totalRemaining)}
-                            {info.latestEnd ? ` · frees ${dateFormat(info.latestEnd, 'MMM yyyy')}` : ''}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="h-[140px] flex items-center justify-center text-slate-400 text-[10px]">No installments</div>
-              )
-            }
+                )}
+              </>
+            ) : (
+              <div className="h-[140px] flex items-center justify-center text-slate-400 text-[10px]">No active installments as of {lastMonthLabel}</div>
+            )}
           </div>
 
           {/* Loans */}
@@ -754,35 +789,42 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Subscriptions */}
-          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-1.5 border border-slate-200 dark:border-slate-700 h-full flex flex-col">
-            <h2 className="font-semibold mb-1 text-xs flex items-center gap-1">
-              <Repeat className="w-3.5 h-3.5 text-indigo-600" />
-              Subscriptions ({subscriptions.length})
-            </h2>
-            <div className="space-y-0.5 flex-1 overflow-y-auto">
+          {/* Subscriptions — active per last month's statements */}
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-1.5 border border-slate-200 dark:border-slate-700 h-full flex flex-col min-h-0">
+            <div className="flex items-center justify-between mb-1 shrink-0">
+              <h2 className="font-semibold text-xs flex items-center gap-1">
+                <Repeat className="w-3.5 h-3.5 text-indigo-600" />
+                Subscriptions ({subscriptions.length})
+              </h2>
+              <span className="text-[8px] text-slate-400" title="Derived from last month's statements — not affected by the month selector">
+                {lastMonthLabel}
+              </span>
+            </div>
+            <div className="space-y-0.5 flex-1 overflow-y-auto min-h-0 pr-1">
               {(subscriptions || []).length > 0 ? (
                 <>
                   {(subscriptions || []).map((sub) => (
                     <div key={sub.name} className="flex items-center justify-between p-0.5 border-b border-slate-100 dark:border-slate-700 last:border-0">
-                      <div>
-                        <div className="font-medium text-[10px]">{sub.name}</div>
+                      <div className="min-w-0">
+                        <div className="font-medium text-[10px] truncate" title={sub.name}>{sub.name}</div>
                         <div className="text-[8px] text-slate-400">{sub.category}</div>
                       </div>
-                      <div className="text-[10px] font-medium text-indigo-600">{formatCurrency(sub.amount)}</div>
+                      <div className="text-[10px] font-medium text-indigo-600 shrink-0">{formatCurrency(sub.amount)}</div>
                     </div>
                   ))}
-                  <div className="pt-1 border-t border-slate-200 mt-1">
-                    <div className="flex justify-between text-[10px] font-bold">
-                      <span>Total/mo</span>
-                      <span className="text-indigo-600">{formatCurrency((subscriptions || []).reduce((s, sub) => s + (sub.amount || 0), 0))}</span>
-                    </div>
-                  </div>
                 </>
               ) : (
-                <div className="text-[9px] text-slate-400 text-center py-4">No subscriptions detected</div>
+                <div className="text-[9px] text-slate-400 text-center py-4">No subscriptions charged in {lastMonthLabel}</div>
               )}
             </div>
+            {(subscriptions || []).length > 0 && (
+              <div className="pt-1 border-t border-slate-200 mt-1 shrink-0">
+                <div className="flex justify-between text-[10px] font-bold">
+                  <span>Total/mo</span>
+                  <span className="text-indigo-600">{formatCurrency((subscriptions || []).reduce((s, sub) => s + (sub.amount || 0), 0))}</span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Average Monthly Spend (Static) */}
@@ -1280,7 +1322,7 @@ export default function Home() {
               <div className="text-sm font-bold text-red-700">{formatCurrency(totalMonthlyObligations)}</div>
             </div>
             <div className="text-center p-2 bg-amber-50 dark:bg-amber-900/20 rounded">
-              <div className="text-[9px] text-amber-600">Installments ({installments.length})</div>
+              <div className="text-[9px] text-amber-600">Installments ({activeInstallments.length})</div>
               <div className="text-sm font-bold text-amber-700">{formatCurrency(monthlyInstallments)}</div>
             </div>
             <div className="text-center p-2 bg-blue-50 dark:bg-blue-900/20 rounded">
