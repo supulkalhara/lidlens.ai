@@ -47,6 +47,7 @@ interface CreditCardData {
     periodEnd: Date | null
     pdfPath: string | null
   }>
+  pdfStatements?: string[]
 }
 
 interface Loan {
@@ -182,8 +183,11 @@ export default function Home() {
   })
   const [filteredTransactions, setFilteredTransactions] = useState<any[]>([])
   const [showTransactions, setShowTransactions] = useState(false)
+  const [viewingPdf, setViewingPdf] = useState<string | null>(null)
+  const [cardPdfsPopup, setCardPdfsPopup] = useState<{ bank: string; pdfs: string[] } | null>(null)
   const [categories, setCategories] = useState<string[]>([])
   const [merchants, setMerchants] = useState<string[]>([])
+  const [pipelineTotals, setPipelineTotals] = useState<{ total: number; processed: number; unprocessed: number; partial: number } | null>(null)
 
 
   // "Static" data — fetched once on mount. These do NOT change with the
@@ -201,6 +205,9 @@ export default function Home() {
         fetchExchangeRate(),
         fetchCategoryAverages(),
         fetchDataQuality(),
+        fetch('/api/pipeline/status').then(r => r.ok ? r.json() : null).then(d => {
+          if (d?.totals) setPipelineTotals(d.totals)
+        }),
       ])
     }
     loadStatic()
@@ -932,7 +939,7 @@ export default function Home() {
               )}
             </div>
           </div>
-        </div >
+        </div>
 
         {/* ROW 2: MONTH-DEPENDENT CONTENT */}
         <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-2 border border-slate-200 dark:border-slate-700">
@@ -1014,13 +1021,30 @@ export default function Home() {
         </div>
 
         {/* Charts Row 1 - 2 columns */}
-        < div className="grid grid-cols-2 gap-1.5 flex-1 min-h-0" >
+        <div className="grid grid-cols-2 gap-1.5 flex-1 min-h-0">
           {/* Credit Cards - Grid Layout */}
           <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-1.5 border border-slate-200 dark:border-slate-700 h-full flex flex-col">
             <div className="flex items-center justify-between mb-1">
-              <h2 className="font-semibold text-xs flex items-center gap-1">
+              <h2 className="font-semibold text-xs flex items-center gap-1.5">
                 <CreditCard className="w-3.5 h-3.5 text-purple-600" />
                 Credit Cards ({creditCards.length})
+                {pipelineTotals && (
+                  <Link
+                    href="/pipeline"
+                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[7px] font-medium border transition-colors ${
+                      pipelineTotals.unprocessed + pipelineTotals.partial > 0
+                        ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800'
+                        : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800'
+                    }`}
+                    title={`${pipelineTotals.processed}/${pipelineTotals.total} PDFs processed — click to manage`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${pipelineTotals.unprocessed + pipelineTotals.partial > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                    {pipelineTotals.processed}/{pipelineTotals.total} PDFs
+                    {pipelineTotals.unprocessed + pipelineTotals.partial > 0 && (
+                      <span className="text-amber-600 dark:text-amber-400">· {pipelineTotals.unprocessed + pipelineTotals.partial} pending</span>
+                    )}
+                  </Link>
+                )}
               </h2>
               <div className="flex gap-0.5 items-center">
                 <Filter className="w-2.5 h-2.5 text-slate-500" />
@@ -1130,50 +1154,80 @@ export default function Home() {
                     ? (card.usedAmount || 0)
                     : (latestStatement?.closingBalance || card.usedAmount || 0)
                   const utilization = (card.limit || 0) > 0 ? (used / card.limit) * 100 : 0
-                  const hasStatement = !!statementForMonth
-                  const hasStatementId = !!statementForMonth?.id
-                  const hasPdfPath = !!statementForMonth?.pdfPath
-                  const hasPdf = hasStatement && hasPdfPath && hasStatementId
 
-                  const handleClick = hasPdf ? async (e: any) => {
-                    e.stopPropagation()
-                    e.preventDefault()
-                    if (!statementForMonth || !statementForMonth.id || !statementForMonth.pdfPath) {
-                      alert(`ERROR: Statement missing details`)
-                      return
-                    }
-                    const url = `/api/statements/${statementForMonth.id}/pdf`
-                    window.open(url, '_blank')
-                  } : undefined
+                  // Sort PDFs newest-first and extract month labels
+                  const sortedPdfs: string[] = [...(card.pdfStatements || [])].sort().reverse()
+                  const hasAnyPdfs = sortedPdfs.length > 0
+                  const visiblePdfs = sortedPdfs.slice(0, 3)
+                  const hiddenCount = sortedPdfs.length - visiblePdfs.length
+
+                  const getPdfLabel = (pdf: string) => {
+                    const m = pdf.match(/_(\d{4}-\d{2})_/)
+                    if (!m) return pdf
+                    const d = new Date(m[1] + '-02')
+                    return d.toLocaleString('default', { month: 'short', year: '2-digit' })
+                  }
 
                   return (
                     <div
                       key={card.id}
-                      className="p-1 border border-slate-100 dark:border-slate-700 rounded bg-slate-50 dark:bg-slate-700/30"
-                      onClick={handleClick}
-                      style={{ cursor: hasPdf ? 'pointer' : 'default' }}
+                      className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 flex flex-col gap-1.5 shadow-sm"
                     >
-                      <div className="flex items-center justify-between">
+                      {/* Card header */}
+                      <div className="flex items-start justify-between gap-1">
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium text-[9px] flex items-center gap-1 truncate" title={card.bank}>
+                          <div className="font-semibold text-[10px] text-slate-900 dark:text-white truncate" title={card.bank}>
                             {card.bank}
                           </div>
                           <div className="text-[7px] text-slate-400 truncate">{card.cardType}</div>
                         </div>
-                        {hasPdf && <FileText className="w-2.5 h-2.5 text-blue-500" />}
+                        <div className="text-right flex-shrink-0">
+                          <div className="text-[10px] font-bold text-red-600">{formatCurrency(used)}</div>
+                          <div className="text-[7px] text-slate-400">/ {formatCurrency(card.limit)}</div>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between mt-1 text-[8px]">
-                        <span className="text-red-600 font-medium">{formatCurrency(used)}</span>
+
+                      {/* Utilization bar */}
+                      <div>
+                        <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-1.5">
+                          <div
+                            className={`h-1.5 rounded-full transition-all ${utilization > 90 ? 'bg-red-500' : utilization > 60 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                            style={{ width: `${Math.min(utilization, 100)}%` }}
+                          />
+                        </div>
+                        <div className="text-[7px] text-slate-400 text-right mt-0.5">{utilization.toFixed(0)}% used</div>
                       </div>
-                      <div className="text-[7px] text-slate-400 text-right">
-                        / {formatCurrency(card.limit)}
-                      </div>
-                      <div className="w-full bg-slate-200 rounded-full h-1 mt-1">
-                        <div
-                          className={`h-1 rounded-full transition-all ${utilization > 80 ? 'bg-red-500' : utilization > 50 ? 'bg-amber-500' : 'bg-green-500'}`}
-                          style={{ width: `${Math.min(utilization, 100)}%` }}
-                        />
-                      </div>
+
+                      {/* Statements strip */}
+                      {hasAnyPdfs ? (
+                        <div className="border-t border-slate-100 dark:border-slate-700 pt-1.5">
+                          <div className="text-[7px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Statements</div>
+                          <div className="flex flex-wrap gap-1">
+                            {visiblePdfs.map((pdf) => (
+                              <button
+                                key={pdf}
+                                onClick={() => setViewingPdf(`/api/statements/pdf?file=${encodeURIComponent(pdf)}`)}
+                                className="text-[7px] px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors font-medium"
+                                title={pdf}
+                              >
+                                {getPdfLabel(pdf)}
+                              </button>
+                            ))}
+                            {hiddenCount > 0 && (
+                              <button
+                                onClick={() => setCardPdfsPopup({ bank: card.bank, pdfs: sortedPdfs })}
+                                className="text-[7px] px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-600 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                              >
+                                +{hiddenCount} more
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="border-t border-slate-100 dark:border-slate-700 pt-1.5">
+                          <div className="text-[7px] text-slate-400 italic">No statements yet</div>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -1182,7 +1236,7 @@ export default function Home() {
 
 
           {/* Category Distribution Donut with Details */}
-          < div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-2 border border-slate-200 dark:border-slate-700 h-full flex flex-col" >
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-2 border border-slate-200 dark:border-slate-700 h-full flex flex-col">
             <h2 className="font-semibold mb-1 text-xs flex items-center gap-1">
               <Target className="w-3.5 h-3.5 text-purple-600" />
               Spending Distribution
@@ -1268,12 +1322,12 @@ export default function Home() {
                 <div className="flex-1 flex items-center justify-center text-slate-400 text-[10px]">No data</div>
               )
             }
-          </div >
-        </div >
+          </div>
+        </div>
 
 
         {/* Monthly Payments Summary */}
-        < div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-2 border border-slate-200 dark:border-slate-700" >
+        <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm p-2 border border-slate-200 dark:border-slate-700">
           <h2 className="font-semibold mb-1 text-xs flex items-center gap-1">
             <Calendar className="w-3.5 h-3.5 text-red-600" />
             Monthly Fixed Obligations Summary
@@ -1403,7 +1457,7 @@ export default function Home() {
                                   })
                                   if (res.ok) {
                                     setEditingTransaction(null)
-                                    fetchData() // reload
+                                      fetchAllData() // reload
                                   } else { alert('Failed') }
                                 } catch(e) { alert('Error') }
                               }} className="bg-blue-600 text-white px-2 rounded">Save</button>
@@ -1451,7 +1505,7 @@ export default function Home() {
                                   try {
                                     const res = await fetch(`/api/dashboard/update-transaction?id=${row.id}&source_file=${encodeURIComponent(row.source)}&old_description=${encodeURIComponent(row.description)}&old_amount=${row.amount}`, { method: 'DELETE' });
                                     if (res.ok) {
-                                      fetchData();
+                                      fetchAllData();
                                     } else {
                                       alert('Failed to delete');
                                     }
@@ -2031,7 +2085,118 @@ export default function Home() {
         }
 
       </div>
+      {/* Card PDFs Popup — lists all unlocked statements for a card */}
+      {cardPdfsPopup && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4"
+          onClick={() => setCardPdfsPopup(null)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-500/10 rounded-lg">
+                  <CreditCard className="w-5 h-5 text-blue-500" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 dark:text-white">{cardPdfsPopup.bank}</h3>
+                  <p className="text-xs text-slate-500">
+                    {cardPdfsPopup.pdfs.length} unlocked statement{cardPdfsPopup.pdfs.length !== 1 ? 's' : ''}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setCardPdfsPopup(null)}
+                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* PDF list */}
+            <div className="overflow-y-auto p-4 space-y-2 max-h-[60vh]">
+              {[...cardPdfsPopup.pdfs].sort().reverse().map((pdf) => {
+                const monthMatch = pdf.match(/_(\d{4}-\d{2})_/)
+                const label = monthMatch
+                  ? new Date(monthMatch[1] + '-02').toLocaleString('default', { month: 'long', year: 'numeric' })
+                  : pdf
+                return (
+                  <button
+                    key={pdf}
+                    onClick={() => {
+                      setCardPdfsPopup(null)
+                      setViewingPdf(`/api/statements/pdf?file=${encodeURIComponent(pdf)}`)
+                    }}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 transition-all text-left group"
+                  >
+                    <div className="p-2 bg-red-500/10 rounded-lg group-hover:bg-red-500/20 transition-colors flex-shrink-0">
+                      <FileText className="w-4 h-4 text-red-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-slate-900 dark:text-white">{label}</div>
+                      <div className="text-[10px] text-slate-400 truncate" title={pdf}>{pdf}</div>
+                    </div>
+                    <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-500 transition-colors flex-shrink-0" />
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-end">
+              <button
+                onClick={() => setCardPdfsPopup(null)}
+                className="px-6 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl font-bold hover:opacity-90 transition-opacity"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {viewingPdf && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4" onClick={() => setViewingPdf(null)}>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-500/10 rounded-lg">
+                  <FileText className="w-5 h-5 text-red-500" />
+                </div>
+                <h3 className="font-bold text-slate-900 dark:text-white">Statement Viewer</h3>
+              </div>
+              <button onClick={() => setViewingPdf(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 bg-slate-100 dark:bg-slate-950 p-4">
+              <iframe 
+                src={viewingPdf} 
+                className="w-full h-full rounded-lg border border-slate-200 dark:border-slate-800"
+                title="PDF Viewer"
+              />
+            </div>
+            <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex justify-end gap-3">
+              <button 
+                onClick={() => window.open(viewingPdf, '_blank')}
+                className="px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-2"
+              >
+                <ExternalLink className="w-4 h-4" />
+                Open in New Tab
+              </button>
+              <button 
+                onClick={() => setViewingPdf(null)}
+                className="px-6 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl font-bold hover:opacity-90 transition-opacity"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
-

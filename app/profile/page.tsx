@@ -163,15 +163,13 @@ export default function ProfilePage() {
                                 {status.msg}
                             </div>
                         )}
-                        <a
-                            href="http://127.0.0.1:4200/runs"
-                            target="_blank"
-                            rel="noopener noreferrer"
+                        <Link
+                            href="/pipeline"
                             className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold transition-all border border-slate-700"
                         >
                             <Activity className="w-4 h-4 text-emerald-400" />
                             View Pipelines
-                        </a>
+                        </Link>
                         <button
                             onClick={saveProfile}
                             disabled={saving}
@@ -307,6 +305,20 @@ export default function ProfilePage() {
                                                             />
                                                         </div>
                                                         <div className="space-y-1">
+                                                            <label className="text-[9px] font-bold text-slate-500 uppercase px-1">Statement Sender Email</label>
+                                                            <input
+                                                                type="email"
+                                                                value={asset.details.statement_email || ''}
+                                                                onChange={e => {
+                                                                    const newAssets = [...assets]
+                                                                    newAssets[index].details.statement_email = e.target.value
+                                                                    setAssets(newAssets)
+                                                                }}
+                                                                placeholder="statements@bank.com"
+                                                                className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-3 py-2 text-sm text-white"
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
                                                             <label className="text-[9px] font-bold text-slate-500 uppercase px-1">Quick Rule</label>
                                                             <select
                                                                 className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-3 py-2 text-sm text-white focus:outline-none"
@@ -360,6 +372,7 @@ export default function ProfilePage() {
                                             )}
 
                                             {asset.type === 'bank' && (
+                                                <>
                                                 <div className="col-span-2 space-y-1">
                                                     <label className="text-[9px] font-bold text-slate-500 uppercase px-1">Account Number / IBAN</label>
                                                     <input
@@ -374,21 +387,91 @@ export default function ProfilePage() {
                                                         className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-3 py-2 text-sm text-white"
                                                     />
                                                 </div>
+                                                <div className="col-span-2 space-y-1 mt-4">
+                                                    <label className="text-[9px] font-bold text-slate-500 uppercase px-1">Statement Sender Email</label>
+                                                    <input
+                                                        type="email"
+                                                        value={asset.details.statement_email || ''}
+                                                        onChange={e => {
+                                                            const newAssets = [...assets]
+                                                            newAssets[index].details.statement_email = e.target.value
+                                                            setAssets(newAssets)
+                                                        }}
+                                                        placeholder="statements@bank.com"
+                                                        className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-3 py-2 text-sm text-white"
+                                                    />
+                                                </div>
+                                                </>
                                             )}
 
                                             {asset.type === 'loan' && (
-                                                <div className="space-y-1 col-span-2">
-                                                    <label className="text-[9px] font-bold text-slate-500 uppercase px-1">Loan ID / Reference</label>
-                                                    <input
-                                                        type="text"
-                                                        value={asset.details.loan_id || ''}
-                                                        onChange={e => {
-                                                            const newAssets = [...assets]
-                                                            newAssets[index].details.loan_id = e.target.value
-                                                            setAssets(newAssets)
-                                                        }}
-                                                        className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-3 py-2 text-sm text-white"
-                                                    />
+                                                <div className="grid grid-cols-2 gap-4 col-span-2">
+                                                    <div className="space-y-1">
+                                                        <label className="text-[9px] font-bold text-slate-500 uppercase px-1">Loan ID / Reference</label>
+                                                        <input
+                                                            type="text"
+                                                            value={asset.details.loan_id || ''}
+                                                            onChange={e => {
+                                                                const newAssets = [...assets]
+                                                                newAssets[index].details.loan_id = e.target.value
+                                                                setAssets(newAssets)
+                                                            }}
+                                                            className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-3 py-2 text-sm text-white"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[9px] font-bold text-slate-500 uppercase px-1">Principal Amount</label>
+                                                        <input
+                                                            type="number"
+                                                            value={asset.details.principal || ''}
+                                                            onChange={e => {
+                                                                const newAssets = [...assets]
+                                                                newAssets[index].details.principal = e.target.value
+                                                                setAssets(newAssets)
+                                                            }}
+                                                            className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-3 py-2 text-sm text-white"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[9px] font-bold text-slate-500 uppercase px-1">Outstanding Balance</label>
+                                                        <input
+                                                            type="number"
+                                                            value={asset.details.outstanding_balance || ''}
+                                                            onChange={e => {
+                                                                const newAssets = [...assets]
+                                                                newAssets[index].details.outstanding_balance = e.target.value
+                                                                setAssets(newAssets)
+                                                            }}
+                                                            className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-3 py-2 text-sm text-white"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[9px] font-bold text-slate-500 uppercase px-1">Monthly Payment</label>
+                                                        <input
+                                                            type="number"
+                                                            value={asset.details.monthly_payment || ''}
+                                                            onChange={e => {
+                                                                const newAssets = [...assets]
+                                                                newAssets[index].details.monthly_payment = e.target.value
+                                                                setAssets(newAssets)
+                                                            }}
+                                                            className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-3 py-2 text-sm text-white"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[9px] font-bold text-slate-500 uppercase px-1">Interest Rate (%)</label>
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            value={asset.details.interest_rate || ''}
+                                                            onChange={e => {
+                                                                const newAssets = [...assets]
+                                                                newAssets[index].details.interest_rate = e.target.value
+                                                                setAssets(newAssets)
+                                                            }}
+                                                            className="w-full bg-slate-900/50 border border-white/5 rounded-xl px-3 py-2 text-sm text-white"
+                                                        />
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>

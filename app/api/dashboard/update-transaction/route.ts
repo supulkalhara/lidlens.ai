@@ -7,15 +7,17 @@ import { stringify } from 'csv-stringify/sync'
 export async function POST(req: Request) {
   try {
     const body = await req.json()
+    console.log('Update Transaction POST Body:', body)
     const { id, old_description, old_amount, date_iso, description, amount, direction, category, source_file } = body
 
     let updatedMaster = false
+
 
     // 1. Update master_transactions.csv
     const masterPath = join(process.cwd(), 'data', 'master_transactions.csv')
     try {
       const masterData = await readFile(masterPath, 'utf-8')
-      const masterRecords = parse(masterData, { columns: true })
+      const masterRecords = parse(masterData, { columns: true }) as any[]
 
       for (let i = 0; i < masterRecords.length; i++) {
         if (masterRecords[i].id === id) {
@@ -38,6 +40,9 @@ export async function POST(req: Request) {
       if (updatedMaster) {
         const masterCsv = stringify(masterRecords, { header: true })
         await writeFile(masterPath, masterCsv)
+        console.log('Successfully updated master CSV for ID:', id)
+      } else {
+        console.warn('Record with ID not found in master CSV:', id)
       }
     } catch (e) {
       console.error('Failed to update master csv:', e)
@@ -74,6 +79,9 @@ export async function POST(req: Request) {
 
         if (updatedJson) {
           await writeFile(jsonPath, JSON.stringify(records, null, 2))
+          console.log('Successfully updated structured JSON:', jsonFileName)
+        } else {
+          console.warn('Record not found in structured JSON:', old_description, old_amount)
         }
       } catch (e) {
         console.error('Failed to update json:', e)
@@ -81,9 +89,9 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ success: true })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating transaction:', error)
-    return NextResponse.json({ error: 'Failed to update transaction' }, { status: 500 })
+    return NextResponse.json({ error: error.message || 'Failed to update transaction' }, { status: 500 })
   }
 }
 

@@ -2,6 +2,8 @@ import os
 import sys
 import base64
 import re
+import sqlite3
+import json
 from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
@@ -11,9 +13,34 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from google.auth.exceptions import RefreshError
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+
+def get_emails_from_db():
+    db_path = Path(__file__).parent.parent.parent / "data" / "preferences.db"
+    if not db_path.exists():
+        return []
+    
+    emails = set()
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT details FROM user_assets WHERE asset_type IN ('card', 'bank')")
+        for row in cursor.fetchall():
+            try:
+                details = json.loads(row[0])
+                email = details.get('statement_email')
+                if email and email.strip():
+                    emails.add(email.strip())
+            except json.JSONDecodeError:
+                pass
+        conn.close()
+    except Exception as e:
+        print(f"Failed to read from db: {e}")
+        
+    return list(emails)
 
 def load_config():
     # Load separate .env just for this service
@@ -24,10 +51,14 @@ def load_config():
     # MailAttachmentExtractor is in components/MailAttachmentExtractor, so root is ../../
     default_output = Path(__file__).parent.parent.parent / "data" / "card_statements_locked"
     
+    env_emails = [email.strip() for email in os.getenv("TARGET_EMAIL_ADDRESSES", "").split(",") if email.strip()]
+    db_emails = get_emails_from_db()
+    all_emails = list(set(env_emails + db_emails))
+    
     return {
         "CREDENTIALS_PATH": os.getenv("GOOGLE_CREDENTIALS_PATH", "credentials.json"),
         "TOKEN_PATH": os.getenv("GOOGLE_TOKEN_PATH", "token.json"),
-        "TARGET_EMAILS": [email.strip() for email in os.getenv("TARGET_EMAIL_ADDRESSES", "").split(",") if email.strip()],
+        "TARGET_EMAILS": all_emails,
         "OUTPUT_DIR": Path(os.getenv("OUTPUT_DIR", str(default_output))).resolve()
     }
 
@@ -41,7 +72,18 @@ def authenticate_gmail(config):
         
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+            try:
+                creds.refresh(Request())
+            except RefreshError:
+                print("Token expired or invalid, requesting new authorization...")
+                if os.path.exists(token_path):
+                    os.remove(token_path)
+                
+                if not os.path.exists(credentials_path):
+                    raise FileNotFoundError(f"Credentials file not found at {credentials_path}. Please download it from Google Cloud Console.")
+                    
+                flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
+                creds = flow.run_local_server(port=0)
         else:
             if not os.path.exists(credentials_path):
                 raise FileNotFoundError(f"Credentials file not found at {credentials_path}. Please download it from Google Cloud Console.")

@@ -155,7 +155,7 @@ export async function GET() {
 
     const finalSubscriptions: any[] = []
 
-    for (const [name, sub] of subsM.entries()) {
+    for (const [name, sub] of Array.from(subsM.entries())) {
       if (!subsMMinus1.has(name)) {
         finalSubscriptions.push({ ...sub, status: 'new' })
       } else {
@@ -163,7 +163,7 @@ export async function GET() {
       }
     }
 
-    for (const [name, sub] of subsMMinus1.entries()) {
+    for (const [name, sub] of Array.from(subsMMinus1.entries())) {
       if (!subsM.has(name)) {
         finalSubscriptions.push({ ...sub, status: 'discontinued' })
       }

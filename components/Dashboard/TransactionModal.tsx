@@ -27,7 +27,7 @@ interface TransactionModalProps {
   onViewPdf?: (sourceFile: string) => void
 }
 
-export default function TransactionModal({ transaction, onClose, onViewSimilar }: TransactionModalProps) {
+export default function TransactionModal({ transaction, onClose, onViewSimilar, onViewPdf }: TransactionModalProps) {
   if (!transaction) return null
 
   const transactionDate = transaction.date instanceof Date ? transaction.date : new Date(transaction.date)

@@ -98,10 +98,13 @@ def main() -> int:
 
                 year_mismatch = False
                 if d and stmt_year is not None:
-                    # statements typically span the prior month; tolerate
-                    # statement_year - 1 only if statement_month is January.
+                    # Credit card billing periods regularly span two calendar years:
+                    # a Q1 statement (Jan–Mar) often contains transactions from
+                    # the prior year's Q4 (Oct–Dec).  Tolerate stmt_year - 1 when
+                    # the statement falls in the first quarter (months 1–3) AND the
+                    # transaction month is in the last quarter (10–12).
                     expected_years = {stmt_year}
-                    if stmt_month == 1:
+                    if stmt_month <= 3 and d.month >= 10:
                         expected_years.add(stmt_year - 1)
                     if d.year not in expected_years:
                         year_mismatch = True
