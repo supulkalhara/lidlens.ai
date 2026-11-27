@@ -2,7 +2,7 @@
 
 > **Privacy-first personal finance dashboard with AI-powered transaction extraction.**
 
-LidLens.ai is an end-to-end system that unlocks password-protected credit card PDFs, extracts every transaction using local + cloud LLMs, and surfaces your finances through a beautiful secure dashboard — all without sending raw financial data to external services.
+LidLens.ai is an end-to-end system that unlocks password-protected credit-card PDFs, extracts every transaction using local + cloud LLMs, and surfaces your finances through a beautiful secure dashboard — all without sending raw financial data to external services.
 
 ---
 
